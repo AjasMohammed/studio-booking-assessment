@@ -29,9 +29,9 @@ class UserSerializer(serializers.ModelSerializer):
         try:
             validate_password(attrs['password'], user)
         except ValidationError as exc:
-            raise serializers.ValidationError({'password': exc.messages}) from exc
+            raise serializers.ValidationError(
+                {'password': exc.messages}) from exc
         return attrs
-
 
     def create(self, validated_data):
         return UserModel.objects.create_user(**validated_data)
