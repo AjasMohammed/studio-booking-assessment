@@ -40,7 +40,7 @@ class CreditPack(models.Model):
         return f"{self.member.username} - {self.studio.name}"
 
 
-class Kind(models.TextChoices):
+class CreditKind(models.TextChoices):
     GRANT = "grant", "Grant"
     BOOKING = "booking", "Booking charge"
     REFUND = "refund", "Cancellation refund"
@@ -58,7 +58,7 @@ class CreditMovement(models.Model):
         null=True,
         blank=True,
     )
-    kind = models.CharField(max_length=10, choices=Kind.choices)
+    kind = models.CharField(max_length=10, choices=CreditKind.choices)
     amount = models.IntegerField()
     effective_at = models.DateTimeField(default=timezone.now)
     recorded_at = models.DateTimeField(auto_now_add=True)
@@ -107,7 +107,7 @@ class CreditMovement(models.Model):
                 )
         if (
             self.pack_id
-            and self.kind == Kind.GRANT
+            and self.kind == CreditKind.GRANT
             and self.amount != self.pack.credits_granted
         ):
             raise ValidationError(

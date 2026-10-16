@@ -1,9 +1,9 @@
 from datetime import datetime
 
-from django.utils import timezone
 from rest_framework import serializers
 
 from apps.studios.models import ClassSessions, Studio
+from apps.studios.services import is_valid_time
 
 
 class StudioSerializer(serializers.ModelSerializer):
@@ -23,8 +23,5 @@ class ClassSessionSerializer(serializers.ModelSerializer):
         )
 
     def validate_starts_at(self, value: datetime) -> datetime:
-        if value <= timezone.now():
-            raise serializers.ValidationError(
-                "Invalid time provided!"
-            )
+        is_valid_time(value)
         return value

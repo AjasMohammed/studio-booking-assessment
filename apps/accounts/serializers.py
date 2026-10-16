@@ -7,12 +7,14 @@ UserModel = get_user_model()
 
 
 class UserSerializer(serializers.ModelSerializer):
+    id = serializers.PrimaryKeyRelatedField(read_only=True)
     email = serializers.EmailField(required=True)
     password = serializers.CharField(write_only=True)
 
     class Meta:
         model = UserModel
         fields = (
+            "id",
             "username",
             "email",
             "password",

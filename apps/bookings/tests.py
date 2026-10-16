@@ -7,7 +7,13 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.accounts.models import Role, User
-from apps.bookings.models import Booking, IdempotencyRecord, WaitlistEntry
+from apps.bookings.models import (
+    Booking,
+    BookingStatus,
+    EntryStatus,
+    IdempotencyRecord,
+    WaitlistEntry,
+)
 from apps.studios.models import ClassSessions, CreditMovement, CreditPack, Studio
 
 
@@ -45,6 +51,11 @@ class ModelIntegrityTests(TestCase):
         self.session.credit_cost = 0
         self.session.full_clean()
 
+    def test_class_validation_rejects_zero_duration(self) -> None:
+        self.session.duration_minutes = 0
+        with self.assertRaises(ValidationError):
+            self.session.full_clean()
+
     def test_studio_validates_timezone_and_accepts_zero_cutoff(self) -> None:
         self.studio.cancellation_cutoff_hours = 0
         self.studio.full_clean()
@@ -54,8 +65,8 @@ class ModelIntegrityTests(TestCase):
 
     def test_database_rejects_invalid_class_values(self) -> None:
         for field, value in [
-            ("duration_minutes", 0),
-            ("capacity", 0),
+            ("duration_minutes", -1),
+            ("capacity", -1),
             ("credit_cost", -1),
         ]:
             with (
@@ -67,8 +78,8 @@ class ModelIntegrityTests(TestCase):
                     **{field: value}
                 )
 
-    def test_pack_requires_positive_grant_and_expiry_after_grant(self) -> None:
-        for values in [{"credits_granted": 0}, {"expires_at": self.pack.granted_at}]:
+    def test_pack_requires_nonnegative_grant_and_expiry_after_grant(self) -> None:
+        for values in [{"credits_granted": -1}, {"expires_at": self.pack.granted_at}]:
             with (
                 self.subTest(values=values),
                 self.assertRaises(IntegrityError),
@@ -92,7 +103,7 @@ class ModelIntegrityTests(TestCase):
             )
 
     def test_cancelled_booking_preserved_when_member_books_again(self) -> None:
-        self.booking.status = Booking.Status.CANCELLED
+        self.booking.status = BookingStatus.CANCELLED
         self.booking.cancelled_at = self.now
         self.booking.save()
         Booking.objects.create(
@@ -109,8 +120,8 @@ class ModelIntegrityTests(TestCase):
 
     def test_one_charge_and_one_refund_per_pack_booking(self) -> None:
         for kind, amount in [
-            (CreditMovement.Kind.BOOKING, -3),
-            (CreditMovement.Kind.REFUND, 3),
+            ("booking", -3),
+            ("refund", 3),
         ]:
             CreditMovement.objects.create(
                 pack=self.pack, booking=self.booking, kind=kind, amount=amount
@@ -163,7 +174,7 @@ class ModelIntegrityTests(TestCase):
             WaitlistEntry.objects.create(
                 member=self.other_member, class_session=self.session
             )
-        entry.status = WaitlistEntry.Status.WITHDRAWN
+        entry.status = EntryStatus.WITHDRAWN
         entry.withdrawn_at = self.now
         entry.save()
         WaitlistEntry.objects.create(
@@ -175,7 +186,7 @@ class ModelIntegrityTests(TestCase):
         entry = WaitlistEntry(
             member=self.other_member,
             class_session=self.session,
-            status=WaitlistEntry.Status.PROMOTED,
+            status=EntryStatus.PROMOTED,
             booking=self.booking,
             promoted_at=self.now,
         )
@@ -185,7 +196,7 @@ class ModelIntegrityTests(TestCase):
             WaitlistEntry.objects.create(
                 member=self.other_member,
                 class_session=self.session,
-                status=WaitlistEntry.Status.PROMOTED,
+                status=EntryStatus.PROMOTED,
             )
 
     def test_idempotency_key_scoped_to_member(self) -> None:

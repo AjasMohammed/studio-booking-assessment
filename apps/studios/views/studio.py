@@ -8,7 +8,7 @@ from apps.studios.serializers import StudioSerializer
 
 
 class CreateStudio(APIView):
-    permission_classes = (IsStudioStaff)
+    permission_classes = (IsStudioStaff,)
 
     def post(self, request):
         data = request.data
@@ -25,7 +25,7 @@ class CreateStudio(APIView):
 
 
 class ListStudiosAPI(APIView):
-    permission_classes = (IsStudioStaff)
+    permission_classes = (IsStudioStaff,)
 
     def get(self, request):
         studios = Studio.objects.all()
