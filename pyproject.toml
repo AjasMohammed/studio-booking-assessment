@@ -1,0 +1,47 @@
+[project]
+name = "sl-assesment"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "django==5.2",
+    "django-environ>=0.14.0",
+    "djangorestframework>=3.18.3",
+    "psycopg[binary]>=3.3.6",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.1",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+extend-exclude = ["migrations"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort (import sorting)
+    "B",        # flake8-bugbear
+    "UP",       # pyupgrade
+    "C4",       # flake8-comprehensions
+    "DJ",       # flake8-django
+    "S",        # flake8-bandit (security)
+    "SIM",      # flake8-simplify
+]
+ignore = [
+    "S101",     # assert is fine in tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S", "DJ"]
+"**/test_*.py" = ["S", "DJ"]
+"**/settings/*.py" = ["F403", "F405"]  # star imports in split settings
+"manage.py" = ["S"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["config", "apps"]  # your project/app package names
