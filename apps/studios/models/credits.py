@@ -1,4 +1,3 @@
-
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -16,7 +15,7 @@ class CreditPack(models.Model):
     studio = models.ForeignKey(
         "studios.Studio", on_delete=models.PROTECT, related_name="credit_packs"
     )
-    credits_granted = models.PositiveIntegerField(null=False)
+    credits_remaining = models.PositiveIntegerField(null=False)
     granted_at = models.DateTimeField(default=timezone.now)
     expires_at = models.DateTimeField(null=False)
     granted_by = models.ForeignKey(
@@ -108,7 +107,8 @@ class CreditMovement(models.Model):
         if (
             self.pack_id
             and self.kind == CreditKind.GRANT
-            and self.amount != self.pack.credits_granted
+            # Existing grants describe the original amount, not today's balance.
+            and self._state.adding
+            and self.amount != self.pack.credits_remaining
         ):
-            raise ValidationError(
-                "Grant movement must match the pack's grant amount.")
+            raise ValidationError("Grant movement must match the pack's grant amount.")

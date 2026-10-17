@@ -9,28 +9,18 @@ UserModel = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     id = serializers.PrimaryKeyRelatedField(read_only=True)
     email = serializers.EmailField(required=True)
-    password = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
 
     class Meta:
         model = UserModel
-        fields = (
-            "id",
-            "username",
-            "email",
-            "password",
-            "role"
-        )
+        fields = ("id", "username", "email", "password", "role")
 
     def validate(self, attrs):
-        user = UserModel(
-            username=attrs["username"],
-            email=attrs["email"]
-        )
+        user = UserModel(username=attrs["username"], email=attrs["email"])
         try:
-            validate_password(attrs['password'], user)
+            validate_password(attrs["password"], user)
         except ValidationError as exc:
-            raise serializers.ValidationError(
-                {'password': exc.messages}) from exc
+            raise serializers.ValidationError({"password": exc.messages}) from exc
         return attrs
 
     def create(self, validated_data):

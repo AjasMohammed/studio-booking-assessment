@@ -7,13 +7,13 @@ from apps.studios.services import is_valid_time
 
 
 class GrantCreditPackSerializer(serializers.ModelSerializer):
-    credits_granted = serializers.IntegerField(min_value=1)
+    credits_remaining = serializers.IntegerField(min_value=1, max_value=2_147_483_647)
 
     class Meta:
         model = CreditPack
         fields = (
             "member",
-            "credits_granted",
+            "credits_remaining",
             "expires_at",
         )
 
@@ -21,9 +21,8 @@ class GrantCreditPackSerializer(serializers.ModelSerializer):
         is_valid_time(value)
         return value
 
-    # def validate_credits_granted(self, value: int) -> int:
-    #     if value <= 0:
-    #         raise serializers.ValidationError(
-    #             "The credit amount should be greater than 0."
-    #         )
-    #     return value
+
+class CreditBalanceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CreditPack
+        fields = ("credits_remaining", "expires_at", "granted_by")

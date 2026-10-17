@@ -2,6 +2,7 @@ from zoneinfo import available_timezones
 
 from django.core.validators import MinValueValidator
 from django.db import models
+from django.db.models import Q
 
 
 def studio_timezone_choices() -> list[tuple[str, str]]:
@@ -29,20 +30,28 @@ class ClassSessions(models.Model):
         Studio,
         on_delete=models.PROTECT,
         related_name="class_sessions",
-        null=False, blank=False
+        null=False,
+        blank=False,
     )
     starts_at = models.DateTimeField(null=False)
     duration_minutes = models.PositiveIntegerField(
-        default=20,
-        validators=[MinValueValidator(1)]
+        default=20, validators=[MinValueValidator(1)]
     )
-    capacity = models.PositiveIntegerField(default=1)
+    capacity = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1)])
     credit_cost = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["starts_at", "pk"]
         indexes = [models.Index(fields=["studio", "starts_at"])]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(duration_minutes__gt=0), name="class_duration_positive"
+            ),
+            models.CheckConstraint(
+                condition=Q(capacity__gt=0), name="class_capacity_positive"
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.studio.name

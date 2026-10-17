@@ -8,6 +8,8 @@ These decisions apply to the current interview assessment implementation.
 
 Allowing anyone to create a staff account is intentional for testing and assessment review. It lets reviewers exercise both roles without database access or an existing administrator. Passwords are validated and hashed using Django's authentication utilities.
 
+Keep the role writable in public signup for this assessment. An API test verifies that supplying `"role": "staff"` creates an application staff account without granting Django admin or superuser privileges.
+
 For a production application, public signup would assign the member role server-side, and staff accounts would be created through a trusted administrative process.
 
 ## JWT authentication

@@ -24,7 +24,7 @@ def grant_credit_pack(staff, studio, validated_data):
         CreditMovement.objects.create(
             pack=credit_pack,
             kind=CreditKind.GRANT,
-            amount=credit_pack.credits_granted,
+            amount=credit_pack.credits_remaining,
             effective_at=credit_pack.granted_at
         )
     return credit_pack

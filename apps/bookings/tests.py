@@ -34,7 +34,7 @@ class ModelIntegrityTests(TestCase):
         self.pack = CreditPack.objects.create(
             member=self.member,
             studio=self.studio,
-            credits_granted=10,
+            credits_remaining=10,
             granted_by=self.staff,
             granted_at=self.now,
             expires_at=self.now + timedelta(days=30),
@@ -78,8 +78,17 @@ class ModelIntegrityTests(TestCase):
                     **{field: value}
                 )
 
+    def test_database_rejects_zero_duration_and_capacity(self) -> None:
+        for field in ["duration_minutes", "capacity"]:
+            with (
+                self.subTest(field=field),
+                self.assertRaises(IntegrityError),
+                transaction.atomic(),
+            ):
+                ClassSessions.objects.filter(pk=self.session.pk).update(**{field: 0})
+
     def test_pack_requires_nonnegative_grant_and_expiry_after_grant(self) -> None:
-        for values in [{"credits_granted": -1}, {"expires_at": self.pack.granted_at}]:
+        for values in [{"credits_remaining": -1}, {"expires_at": self.pack.granted_at}]:
             with (
                 self.subTest(values=values),
                 self.assertRaises(IntegrityError),
