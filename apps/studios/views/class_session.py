@@ -16,9 +16,11 @@ from apps.studios.serializers import (
 
 
 class CreateSession(APIView):
+    """Allow staff to schedule a class in the studio identified by the URL."""
     permission_classes = (IsStudioStaff,)
 
     def post(self, request, studio_id: int):
+        """Validate scheduling data and bind the class to the URL's studio."""
         studio = get_object_or_404(Studio, pk=studio_id)
         serializer = ClassSessionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -35,13 +37,15 @@ class CreateSession(APIView):
 
 
 class ListClassSessionsAPI(APIView):
+    """Browse future classes with optional date bounds and remaining seats."""
     def get(self, request):
+        """Return future classes with confirmed bookings subtracted from capacity."""
         q_params = request.query_params
         now = timezone.now()
         class_sessions = ClassSessions.objects.filter(starts_at__gt=now)
         if q_params:
             params_serializer = DateRangeSerializer(data=q_params)
-            params_serializer.is_valid()
+            params_serializer.is_valid(raise_exception=True)
             dates = params_serializer.validated_data
             class_sessions = class_sessions.filter(starts_at__date__range=(
                 dates['start_date'],

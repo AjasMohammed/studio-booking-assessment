@@ -7,15 +7,18 @@ UserModel = get_user_model()
 
 
 class UserSerializer(serializers.ModelSerializer):
+    """Serialize user details and validate passwords before account creation."""
     id = serializers.PrimaryKeyRelatedField(read_only=True)
     email = serializers.EmailField(required=True)
     password = serializers.CharField(write_only=True, trim_whitespace=False)
 
     class Meta:
+        """Declare serialized fields and their model mapping."""
         model = UserModel
         fields = ("id", "username", "email", "password", "role")
 
     def validate(self, attrs):
+        """Apply Django password rules using the submitted user details."""
         user = UserModel(username=attrs["username"], email=attrs["email"])
         try:
             validate_password(attrs["password"], user)
@@ -24,4 +27,5 @@ class UserSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        """Create the user through Django's manager so the password is hashed."""
         return UserModel.objects.create_user(**validated_data)

@@ -5,12 +5,14 @@ from django.db.models import Q
 
 
 class BookingStatus(models.TextChoices):
+    """Persisted states of a class booking."""
     CONFIRMED = "confirmed", "Confirmed"
     CANCELLED = "cancelled", "Cancelled"
 
 
 class Booking(models.Model):
 
+    """A member reservation with a snapshot of its charged cost and cutoff."""
     member = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -22,15 +24,18 @@ class Booking(models.Model):
     status = models.CharField(
         max_length=10, choices=BookingStatus.choices, default=BookingStatus.CONFIRMED
     )
+    # Preserve booking terms when class prices or studio policies change.
     credits_charged = models.PositiveIntegerField(default=0)
     cancellation_deadline = models.DateTimeField()
     booked_at = models.DateTimeField(auto_now_add=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
+        """Configure database integrity rules and query defaults."""
         ordering = ["-booked_at", "-pk"]
         indexes = [models.Index(fields=["class_session", "status"])]
         constraints = [
+            # Historical attempts remain; only one active reservation is allowed.
             models.UniqueConstraint(
                 fields=["member", "class_session"],
                 condition=Q(status="confirmed"),
@@ -46,16 +51,19 @@ class Booking(models.Model):
         ]
 
     def __str__(self) -> str:
+        """Return a readable label for admin and diagnostic output."""
         return f"Member {self.member_id}, class {self.class_session_id}: {self.status}"
 
 
 class EntryStatus(models.TextChoices):
+    """Persisted states of a waitlist entry."""
     WAITING = "waiting", "Waiting"
     PROMOTED = "promoted", "Promoted"
     WITHDRAWN = "withdrawn", "Withdrawn"
 
 
 class WaitlistEntry(models.Model):
+    """Track a waitlist attempt and its resulting booking when promoted."""
     member = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -82,6 +90,7 @@ class WaitlistEntry(models.Model):
     )
 
     class Meta:
+        """Configure database integrity rules and query defaults."""
         ordering = ["joined_at", "pk"]
         indexes = [models.Index(
             fields=["class_session", "status", "joined_at"])]
@@ -117,9 +126,11 @@ class WaitlistEntry(models.Model):
         ]
 
     def __str__(self) -> str:
+        """Return a readable label for admin and diagnostic output."""
         return f"Member {self.member_id}, class {self.class_session_id}: {self.status}"
 
     def clean(self) -> None:
+        """Require any promoted booking to match this entry's member and class."""
         super().clean()
         if self.booking_id and (
             self.booking.member_id != self.member_id
@@ -130,6 +141,7 @@ class WaitlistEntry(models.Model):
 
 
 class IdempotencyRecord(models.Model):
+    """Store a member-scoped request fingerprint and its successful booking response."""
     member = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -145,6 +157,7 @@ class IdempotencyRecord(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Configure database integrity rules and query defaults."""
         constraints = [
             models.UniqueConstraint(
                 fields=["member", "key"], name="unique_member_booking_key"
@@ -159,9 +172,11 @@ class IdempotencyRecord(models.Model):
         ]
 
     def __str__(self) -> str:
+        """Return a readable label for admin and diagnostic output."""
         return f"Booking request for member {self.member_id}: {self.key}"
 
     def clean(self) -> None:
+        """Require the saved booking to belong to the key's member."""
         super().clean()
         if self.booking_id and self.booking.member_id != self.member_id:
             raise ValidationError(

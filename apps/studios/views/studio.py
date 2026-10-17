@@ -8,9 +8,11 @@ from apps.studios.serializers import StudioSerializer
 
 
 class CreateStudio(APIView):
+    """Allow staff to create a studio and its cancellation policy."""
     permission_classes = (IsStudioStaff,)
 
     def post(self, request):
+        """Validate studio settings and return the created studio ID."""
         data = request.data
         serizlizer = StudioSerializer(data=data)
         serizlizer.is_valid(raise_exception=True)
@@ -25,9 +27,11 @@ class CreateStudio(APIView):
 
 
 class ListStudiosAPI(APIView):
+    """Allow staff to browse studio configuration."""
     permission_classes = (IsStudioStaff,)
 
     def get(self, request):
+        """Return all studio configurations to staff."""
         studios = Studio.objects.all()
         serializer = StudioSerializer(studios, many=True)
         return Response(

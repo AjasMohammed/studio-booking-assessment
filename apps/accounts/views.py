@@ -11,12 +11,15 @@ UserModel = get_user_model()
 
 
 class PublicAPIView(APIView):
+    """Base view for endpoints that require neither authentication nor permissions."""
     authentication_classes = ()
     permission_classes = ()
 
 
 class SignUp(PublicAPIView):
+    """Accept public account registrations."""
     def post(self, request):
+        """Validate registration data and create an account."""
         serializer = UserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -27,8 +30,11 @@ class SignUp(PublicAPIView):
 
 
 class ListMembers(APIView):
+    """Allow staff to browse users with the member role."""
     permission_classes = (IsStudioStaff,)
+
     def get(self, request):
+        """Return member accounts without exposing password values."""
         members = UserModel.objects.filter(role=Role.MEMBER)
         serializer = UserSerializer(members, many=True)
         return Response(

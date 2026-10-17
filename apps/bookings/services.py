@@ -118,7 +118,7 @@ def book_class(member, class_session_id, idempotency_key):
     fingerprint = hashlib.sha256(payload.encode()).hexdigest()
     # A stable row exists even before a request's idempotency record does.
     # All booking writes use member -> class -> packs as their lock order.
-    get_user_model().objects.select_for_update().get(pk=member.pk)
+    get_user_model().objects.select_for_update(no_key=True).get(pk=member.pk)
     previous = IdempotencyRecord.objects.filter(
         member=member,
         key=idempotency_key,
@@ -155,13 +155,14 @@ def book_class(member, class_session_id, idempotency_key):
 
 @transaction.atomic
 def cancel_booking(member, booking_id):
-    get_user_model().objects.select_for_update().get(pk=member.pk)
+    get_user_model().objects.select_for_update(no_key=True).get(pk=member.pk)
     booking = get_object_or_404(
         Booking.objects.select_for_update(of=("self",))
         .filter(member=member),
         pk=booking_id
     )
-    class_session = get_object_or_404(
+    # Lock this class so other requests wait while we cancel and fill the freed seat.
+    get_object_or_404(
         ClassSessions.objects.select_for_update(), pk=booking.class_session_id)
     if booking.status == BookingStatus.CANCELLED:
         raise serializers.ValidationError("Booking already cancelled!")
@@ -229,7 +230,7 @@ def is_waitlist_eligible(member, class_session: ClassSessions):
 
 @transaction.atomic
 def join_waitlist(member, class_session_id):
-    get_user_model().objects.select_for_update().get(pk=member.pk)
+    get_user_model().objects.select_for_update(no_key=True).get(pk=member.pk)
     class_session = get_object_or_404(
         ClassSessions.objects.select_for_update(),
         pk=class_session_id

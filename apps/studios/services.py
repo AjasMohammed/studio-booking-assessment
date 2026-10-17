@@ -8,6 +8,7 @@ from apps.studios.models import CreditKind, CreditMovement, CreditPack
 
 
 def is_valid_time(value: datetime):
+    """Reject a parsed datetime that is not strictly later than the current time."""
     if value <= timezone.now():
         raise serializers.ValidationError(
             "Invalid time provided!"
@@ -15,6 +16,7 @@ def is_valid_time(value: datetime):
 
 
 def grant_credit_pack(staff, studio, validated_data):
+    """Create a credit pack and its initial grant movement in one transaction."""
     with transaction.atomic():
         credit_pack = CreditPack.objects.create(
             granted_by=staff,

@@ -7,10 +7,12 @@ from django.db.models import Q
 
 def studio_timezone_choices() -> list[tuple[str, str]]:
     # A callable avoids freezing this machine's timezone database into migrations.
+    """Return supported IANA timezone names for studio validation."""
     return [(tz, tz) for tz in sorted(available_timezones() - {"localtime"})]
 
 
 class Studio(models.Model):
+    """Studio identity and local timezone policy for cancellation cutoffs."""
     name = models.CharField(max_length=255, unique=True)
     timezone = models.CharField(
         max_length=64,
@@ -22,10 +24,12 @@ class Studio(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self) -> str:
+        """Return a readable label for admin and diagnostic output."""
         return self.name
 
 
 class ClassSessions(models.Model):
+    """A scheduled studio class with fixed capacity, duration, and credit cost."""
     studio = models.ForeignKey(
         Studio,
         on_delete=models.PROTECT,
@@ -42,6 +46,7 @@ class ClassSessions(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Configure database integrity rules and query defaults."""
         ordering = ["starts_at", "pk"]
         indexes = [models.Index(fields=["studio", "starts_at"])]
         constraints = [
@@ -54,4 +59,5 @@ class ClassSessions(models.Model):
         ]
 
     def __str__(self) -> str:
+        """Return a readable label for admin and diagnostic output."""
         return self.studio.name

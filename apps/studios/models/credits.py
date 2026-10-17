@@ -6,6 +6,7 @@ from django.utils import timezone
 
 
 class CreditPack(models.Model):
+    """A studio-specific credit balance with its own grant and expiry times."""
     member = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -26,6 +27,7 @@ class CreditPack(models.Model):
     )
 
     class Meta:
+        """Configure database integrity rules and query defaults."""
         ordering = ["expires_at", "pk"]
         indexes = [models.Index(fields=["member", "studio", "expires_at"])]
         constraints = [
@@ -36,10 +38,12 @@ class CreditPack(models.Model):
         ]
 
     def __str__(self) -> str:
+        """Return a readable label for admin and diagnostic output."""
         return f"{self.member.username} - {self.studio.name}"
 
 
 class CreditKind(models.TextChoices):
+    """Accounting causes that determine the sign and booking link of a movement."""
     GRANT = "grant", "Grant"
     BOOKING = "booking", "Booking charge"
     REFUND = "refund", "Cancellation refund"
@@ -47,6 +51,7 @@ class CreditKind(models.TextChoices):
 
 
 class CreditMovement(models.Model):
+    """A signed credit allocation with effective and recording timestamps."""
     pack = models.ForeignKey(
         CreditPack, on_delete=models.PROTECT, related_name="movements"
     )
@@ -59,10 +64,12 @@ class CreditMovement(models.Model):
     )
     kind = models.CharField(max_length=10, choices=CreditKind.choices)
     amount = models.IntegerField()
+    # Accounting time can differ from when the row was actually inserted.
     effective_at = models.DateTimeField(default=timezone.now)
     recorded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Configure database integrity rules and query defaults."""
         ordering = ["effective_at", "pk"]
         indexes = [models.Index(fields=["pack", "effective_at"])]
         constraints = [
@@ -83,6 +90,7 @@ class CreditMovement(models.Model):
             models.UniqueConstraint(
                 fields=["pack"], condition=Q(kind="grant"), name="one_grant_per_pack"
             ),
+            # Allow one charge and one refund per pack allocation.
             models.UniqueConstraint(
                 fields=["pack", "booking", "kind"],
                 condition=Q(kind__in=["booking", "refund"]),
@@ -91,9 +99,11 @@ class CreditMovement(models.Model):
         ]
 
     def __str__(self) -> str:
+        """Return a readable label for admin and diagnostic output."""
         return f"{self.kind}: {self.amount:+d} credits (pack {self.pack_id})"
 
     def clean(self) -> None:
+        """Validate allocation ownership and the amount of a newly added grant."""
         super().clean()
         if self.pack_id and self.booking_id:
             if self.pack.member_id != self.booking.member_id:

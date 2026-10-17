@@ -4,10 +4,14 @@ from apps.bookings.views import (
     BookClassAPI,
     CancelBookingAPI,
     JoinWaitlistAPI,
+    ListBookingsAPI,
+    ListWaitlistEntriesAPI,
     WithdrawWaitlistEntryAPI,
 )
 
 urlpatterns = [
+    path("me", ListBookingsAPI.as_view(), name="my_bookings"),
+    path("waitlist/me", ListWaitlistEntriesAPI.as_view(), name="my_waitlist"),
     path("classes/<int:class_id>/book",
          BookClassAPI.as_view(), name="book_class"),
     path("<int:booking_id>/cancel",

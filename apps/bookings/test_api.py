@@ -5,10 +5,142 @@ from django.urls import URLResolver, get_resolver, reverse
 from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.bookings.models import Booking, IdempotencyRecord
+from apps.bookings.models import (
+    Booking,
+    BookingStatus,
+    EntryStatus,
+    IdempotencyRecord,
+    WaitlistEntry,
+)
 from apps.bookings.views import BookClassAPI
 from apps.studios.models import CreditMovement
 from apps.testing import DomainFixtures
+
+
+class BookingHistoryAPITests(DomainFixtures, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.client = APIClient()
+        self.url = reverse("my_bookings")
+
+    def test_registered_route_requires_authentication(self):
+        self.assertEqual(self.url, "/bookings/me")
+        self.assertEqual(self.client.get(self.url).status_code, 401)
+
+    def test_empty_history_returns_empty_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
+
+    def test_history_includes_both_statuses_and_only_owned_bookings(self):
+        confirmed = Booking.objects.create(
+            member=self.member,
+            class_session=self.session,
+            credits_charged=3,
+            cancellation_deadline=self.now,
+        )
+        cancelled = Booking.objects.create(
+            member=self.member,
+            class_session=self.session,
+            status=BookingStatus.CANCELLED,
+            cancelled_at=self.now,
+            credits_charged=2,
+            cancellation_deadline=self.now,
+        )
+        Booking.objects.create(
+            member=self.other_member,
+            class_session=self.session,
+            cancellation_deadline=self.now,
+        )
+        self.client.force_authenticate(self.member)
+
+        with self.assertNumQueries(1):
+            response = self.client.get(self.url, {"member": self.other_member.pk})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [row["id"] for row in response.data], [cancelled.pk, confirmed.pk]
+        )
+        self.assertEqual(
+            [row["status"] for row in response.data], ["cancelled", "confirmed"]
+        )
+        row = response.data[0]
+        self.assertEqual(row["credits_charged"], 2)
+        self.assertIsNotNone(row["booked_at"])
+        self.assertIsNotNone(row["cancelled_at"])
+        self.assertIsNotNone(row["cancellation_deadline"])
+        self.assertIsNone(response.data[1]["cancelled_at"])
+        self.assertEqual(row["class_session"]["id"], self.session.pk)
+        self.assertEqual(row["class_session"]["studio"]["id"], self.studio.pk)
+
+
+class WaitlistHistoryAPITests(DomainFixtures, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.client = APIClient()
+        self.url = reverse("my_waitlist")
+
+    def test_registered_route_requires_authentication(self):
+        self.assertEqual(self.url, "/bookings/waitlist/me")
+        self.assertEqual(self.client.get(self.url).status_code, 401)
+
+    def test_empty_history_returns_empty_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
+
+    def test_history_includes_all_statuses_and_only_owned_entries(self):
+        waiting = WaitlistEntry.objects.create(
+            member=self.member, class_session=self.session
+        )
+        booking = Booking.objects.create(
+            member=self.member,
+            class_session=self.session,
+            cancellation_deadline=self.now,
+        )
+        promoted = WaitlistEntry.objects.create(
+            member=self.member,
+            class_session=self.session,
+            status=EntryStatus.PROMOTED,
+            promoted_at=self.now,
+            booking=booking,
+        )
+        withdrawn = WaitlistEntry.objects.create(
+            member=self.member,
+            class_session=self.session,
+            status=EntryStatus.WITHDRAWN,
+            withdrawn_at=self.now,
+        )
+        WaitlistEntry.objects.create(
+            member=self.other_member, class_session=self.session
+        )
+        self.client.force_authenticate(self.member)
+
+        with self.assertNumQueries(1):
+            response = self.client.get(self.url, {"member": self.other_member.pk})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [row["id"] for row in response.data],
+            [waiting.pk, promoted.pk, withdrawn.pk],
+        )
+        self.assertEqual(
+            [row["status"] for row in response.data],
+            ["waiting", "promoted", "withdrawn"],
+        )
+        self.assertEqual(response.data[1]["booking_id"], booking.pk)
+        self.assertIsNone(response.data[0]["booking_id"])
+        self.assertIsNone(response.data[2]["booking_id"])
+        self.assertIsNone(response.data[0]["promoted_at"])
+        self.assertIsNone(response.data[0]["withdrawn_at"])
+        self.assertIsNotNone(response.data[1]["promoted_at"])
+        self.assertIsNotNone(response.data[2]["withdrawn_at"])
+        for row in response.data:
+            self.assertIsNotNone(row["joined_at"])
+            self.assertEqual(row["class_session"]["id"], self.session.pk)
+            self.assertEqual(row["class_session"]["studio"]["id"], self.studio.pk)
 
 
 class BookingAPITests(DomainFixtures, TestCase):

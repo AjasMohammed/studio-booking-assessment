@@ -4,9 +4,37 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import EntryStatus, WaitlistEntry
-from .serializers import WaitlistSerializer
+from .models import Booking, EntryStatus, WaitlistEntry
+from .serializers import (
+    BookingSerializer,
+    WaitlistHistorySerializer,
+    WaitlistSerializer,
+)
 from .services import book_class, cancel_booking, join_waitlist
+
+
+class ListBookingsAPI(APIView):
+    """List confirmed and cancelled bookings belonging to the authenticated user."""
+
+    def get(self, request):
+        """Return booking history with class and studio relations fetched together."""
+        bookings = Booking.objects.filter(member=request.user).select_related(
+            "class_session__studio"
+        )
+        serializer = BookingSerializer(bookings, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ListWaitlistEntriesAPI(APIView):
+    """List waitlist history belonging to the authenticated user."""
+
+    def get(self, request):
+        """Return entries in join order with their class and studio details."""
+        entries = WaitlistEntry.objects.filter(member=request.user).select_related(
+            "class_session__studio"
+        )
+        serializer = WaitlistHistorySerializer(entries, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class BookClassAPI(APIView):

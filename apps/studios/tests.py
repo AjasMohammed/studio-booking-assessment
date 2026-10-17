@@ -7,13 +7,20 @@ from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APITestCase
 
-from apps.bookings.services import book_class
+from apps.bookings.models import Booking, BookingStatus
+from apps.bookings.services import book_class, cancel_booking
 from apps.studios.models import ClassSessions, CreditMovement, CreditPack, Studio
 from apps.studios.services import grant_credit_pack
 from apps.testing import DomainFixtures
 
 
 class StudioAPITests(DomainFixtures, APITestCase):
+    def test_studio_list_includes_studio_id(self):
+        self.client.force_authenticate(self.staff)
+        response = self.client.get(reverse("list_studios"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data[0]["id"], self.studio.pk)
+
     def test_studio_creation_requires_staff(self):
         url = reverse("create_studio")
         self.assertEqual(self.client.post(url, {"name": "New"}).status_code, 401)
@@ -141,6 +148,70 @@ class StudioAPITests(DomainFixtures, APITestCase):
             self.assertEqual(response.status_code, 201)
             saved.append(ClassSessions.objects.get(pk=response.data["session_id"]))
         self.assertEqual(saved[0].starts_at, saved[1].starts_at)
+
+
+class ClassBrowsingAPITests(DomainFixtures, APITestCase):
+    def test_invalid_date_ranges_return_field_errors(self):
+        self.client.force_authenticate(self.member)
+        day = self.session.starts_at.date().isoformat()
+        later = (self.session.starts_at.date() + timedelta(days=1)).isoformat()
+        cases = [
+            ({"start_date": "invalid", "end_date": day}, "start_date"),
+            ({"start_date": day, "end_date": "invalid"}, "end_date"),
+            ({"start_date": day}, "end_date"),
+            ({"end_date": day}, "start_date"),
+            ({"start_date": later, "end_date": day}, "end_date"),
+        ]
+        for params, field in cases:
+            with self.subTest(params=params):
+                response = self.client.get(reverse("list_class_sessions"), params)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(field, response.data)
+
+    def test_class_list_requires_authentication(self):
+        self.assertEqual(
+            self.client.get(reverse("list_class_sessions")).status_code, 401
+        )
+
+    def test_registered_route_lists_future_classes_and_counts_confirmed_seats(self):
+        url = reverse("list_class_sessions")
+        self.assertEqual(url, "/studio/classes")
+        self.make_session(starts_at=self.now - timedelta(days=1))
+        Booking.objects.create(
+            member=self.member,
+            class_session=self.session,
+            cancellation_deadline=self.now,
+        )
+        Booking.objects.create(
+            member=self.other_member,
+            class_session=self.session,
+            status=BookingStatus.CANCELLED,
+            cancelled_at=self.now,
+            cancellation_deadline=self.now,
+        )
+        self.client.force_authenticate(self.member)
+
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], self.session.pk)
+        self.assertEqual(response.data[0]["studio"]["id"], self.studio.pk)
+        self.assertEqual(response.data[0]["no_of_seats_available"], 1)
+
+    def test_class_list_accepts_date_range_through_registered_route(self):
+        self.make_session(starts_at=self.now + timedelta(days=5))
+        self.client.force_authenticate(self.member)
+        day = self.session.starts_at.date().isoformat()
+
+        response = self.client.get(
+            reverse("list_class_sessions"),
+            {"start_date": day, "end_date": day},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["no_of_seats_available"], 2)
 
 
 class CreditAPITests(DomainFixtures, APITestCase):
@@ -294,6 +365,176 @@ class CreditAPITests(DomainFixtures, APITestCase):
         self.client.force_authenticate(self.member)
         response = self.client.get(reverse("credit_balance"))
         self.assertEqual(response.data["studios"][0]["total_credits"], 7)
+
+
+class HistoricalCreditBalanceAPITests(DomainFixtures, APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.grant_time = self.now - timedelta(days=10)
+        self.booking_time = self.now - timedelta(days=7)
+        self.refund_time = self.now - timedelta(days=5)
+        self.expiry_time = self.now - timedelta(days=1)
+        self.pack = self.make_pack(
+            10, granted_at=self.grant_time, expires_at=self.expiry_time
+        )
+        with patch(
+            "apps.bookings.services.timezone.now", return_value=self.booking_time
+        ):
+            body, _ = book_class(self.member, self.session.pk, "historical")
+        with patch(
+            "apps.bookings.services.timezone.now", return_value=self.refund_time
+        ):
+            cancel_booking(self.member, body["id"])
+        # Backfilled events must be selected by effective time, not insertion time.
+        self.pack.movements.update(recorded_at=self.now)
+        self.client.force_authenticate(self.member)
+
+    def balance(self, at, **params):
+        return self.client.get(
+            reverse("credit_balance"), {"at": at.isoformat(), **params}
+        )
+
+    def test_grant_charge_refund_and_expiry_boundaries(self):
+        epsilon = timedelta(microseconds=1)
+        cases = [
+            (self.grant_time - epsilon, None),
+            (self.grant_time, 10),
+            (self.booking_time - epsilon, 10),
+            (self.booking_time, 7),
+            (self.refund_time - epsilon, 7),
+            (self.refund_time, 10),
+            (self.expiry_time - epsilon, 10),
+            (self.expiry_time, None),
+            (self.now, None),
+        ]
+        for at, expected in cases:
+            with self.subTest(at=at):
+                response = self.balance(at)
+                self.assertEqual(response.status_code, 200)
+                if expected is None:
+                    self.assertEqual(response.data, {"studios": []})
+                else:
+                    studio = response.data["studios"][0]
+                    self.assertEqual(studio["id"], self.studio.pk)
+                    self.assertEqual(studio["total_credits"], expected)
+                    self.assertEqual(
+                        studio["credit_packs"][0]["credits_remaining"], expected
+                    )
+
+    def test_groups_only_owned_packs_valid_at_the_requested_time(self):
+        at = self.now - timedelta(days=2)
+        self.make_pack(2, granted_at=self.now - timedelta(days=4))
+        self.make_pack(80, granted_at=self.now - timedelta(days=1))
+        self.make_pack(
+            90,
+            granted_at=self.grant_time,
+            expires_at=self.now - timedelta(days=3),
+        )
+        self.make_pack(100, member=self.other_member, granted_at=self.grant_time)
+        other_studio = Studio.objects.create(name="Historical Pilates")
+        self.make_pack(5, studio=other_studio, granted_at=self.grant_time)
+
+        with self.assertNumQueries(2):
+            response = self.balance(at, member=self.other_member.pk)
+
+        self.assertEqual(response.status_code, 200)
+        studios = {row["id"]: row for row in response.data["studios"]}
+        self.assertEqual(studios[self.studio.pk]["total_credits"], 12)
+        self.assertEqual(studios[other_studio.pk]["total_credits"], 5)
+        self.assertEqual(len(studios[self.studio.pk]["credit_packs"]), 2)
+        for row in studios.values():
+            self.assertEqual(
+                row["total_credits"],
+                sum(pack["credits_remaining"] for pack in row["credit_packs"]),
+            )
+
+    def test_equivalent_timezone_offsets_return_the_same_snapshot(self):
+        india = datetime_timezone(timedelta(hours=5, minutes=30))
+        self.assertEqual(
+            self.balance(self.booking_time).data,
+            self.balance(self.booking_time.astimezone(india)).data,
+        )
+
+    def test_invalid_empty_and_future_timestamps_return_400(self):
+        for at in ["invalid", "", (self.now + timedelta(days=1)).isoformat()]:
+            with self.subTest(at=at):
+                response = self.client.get(reverse("credit_balance"), {"at": at})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn("at", response.data)
+
+    def test_historical_balance_requires_authentication(self):
+        self.client.force_authenticate(None)
+        self.assertEqual(self.balance(self.booking_time).status_code, 401)
+
+    def test_empty_member_history_returns_empty_list(self):
+        self.client.force_authenticate(self.other_member)
+        self.assertEqual(self.balance(self.booking_time).data, {"studios": []})
+
+    def test_no_timestamp_preserves_current_balance_behavior(self):
+        response = self.client.get(reverse("credit_balance"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {"studios": []})
+        self.assertEqual(
+            self.balance(self.booking_time).data["studios"][0]["total_credits"], 7
+        )
+        self.pack.refresh_from_db()
+        self.assertEqual(self.pack.credits_remaining, 10)
+
+
+class CreditMovementAPITests(DomainFixtures, APITestCase):
+    def test_registered_route_requires_authentication(self):
+        url = reverse("credit_movements")
+        self.assertEqual(url, "/studio/credit/movements")
+        self.assertEqual(self.client.get(url).status_code, 401)
+
+    def test_empty_history_returns_empty_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.get(reverse("credit_movements"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, [])
+
+    def test_history_preserves_causes_and_expired_packs_without_exposing_others(self):
+        pack = self.make_pack(10)
+        grant = pack.movements.get()
+        body, _ = book_class(self.member, self.session.pk, "history")
+        cancel_booking(self.member, body["id"])
+        charge = pack.movements.get(kind="booking")
+        refund = pack.movements.get(kind="refund")
+        pack.expires_at = self.now - timedelta(seconds=1)
+        pack.save(update_fields=["expires_at"])
+        other_studio = Studio.objects.create(name="Other studio")
+        other_pack = self.make_pack(4, studio=other_studio)
+        other_grant = other_pack.movements.get()
+        self.make_pack(100, member=self.other_member)
+        self.client.force_authenticate(self.member)
+
+        with self.assertNumQueries(1):
+            response = self.client.get(
+                reverse("credit_movements"), {"member": self.other_member.pk}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [row["id"] for row in response.data],
+            [grant.pk, other_grant.pk, charge.pk, refund.pk],
+        )
+        self.assertEqual(
+            [(row["kind"], row["amount"]) for row in response.data],
+            [("grant", 10), ("grant", 4), ("booking", -3), ("refund", 3)],
+        )
+        for row in response.data:
+            self.assertIsNotNone(row["effective_at"])
+            self.assertIsNotNone(row["recorded_at"])
+            if row["id"] == other_grant.pk:
+                self.assertEqual(row["pack_id"], other_pack.pk)
+                self.assertEqual(row["studio"]["id"], other_studio.pk)
+            else:
+                self.assertEqual(row["pack_id"], pack.pk)
+                self.assertEqual(row["studio"]["id"], self.studio.pk)
+            if row["kind"] == "grant":
+                self.assertIsNone(row["booking_id"])
+            else:
+                self.assertEqual(row["booking_id"], body["id"])
 
 
 class GrantTransactionTests(DomainFixtures, TestCase):
