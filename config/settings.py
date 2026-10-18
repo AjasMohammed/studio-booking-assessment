@@ -32,7 +32,9 @@ SECRET_KEY = env("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env("DEBUG")
 
-ALLOWED_HOSTS: list[str] = []
+ALLOWED_HOSTS: list[str] = env.list(
+    "ALLOWED_HOSTS", default=["localhost", "127.0.0.1", "[::1]"]
+)
 
 
 # Application definition
@@ -106,6 +108,13 @@ SIMPLE_JWT = {
 DATABASES = {
     'default': env.db()
 }
+# Compose overrides the host address while host development keeps DATABASE_URL.
+DATABASES['default']['HOST'] = env(
+    'DB_HOST', default=DATABASES['default']['HOST']
+)
+DATABASES['default']['PORT'] = env(
+    'DB_PORT', default=DATABASES['default']['PORT']
+)
 
 
 # Password validation
