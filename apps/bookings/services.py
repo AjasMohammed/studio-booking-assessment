@@ -1,6 +1,7 @@
 import hashlib
 import json
 from datetime import UTC, timedelta
+from typing import cast
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
@@ -9,6 +10,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.accounts.models import User
 from apps.bookings.models import (
     Booking,
     BookingStatus,
@@ -24,9 +26,10 @@ from .exceptions import (
     InsufficientCredits,
     NoSeatsAvailable,
 )
+from .types import BookingResponse
 
 
-def check_class_availability(session: ClassSessions):
+def check_class_availability(session: ClassSessions) -> None:
     now = timezone.now()
     if session.starts_at <= now:
         raise ClassAlreadyStarted()
@@ -37,7 +40,7 @@ def check_class_availability(session: ClassSessions):
         raise NoSeatsAvailable()
 
 
-def _create_booking(member_id, class_session: ClassSessions, ):
+def _create_booking(member_id: int, class_session: ClassSessions) -> Booking:
     candidates = list(
         CreditPack.objects.select_for_update()
         .filter(
@@ -105,7 +108,9 @@ def _create_booking(member_id, class_session: ClassSessions, ):
 
 
 @transaction.atomic
-def book_class(member, class_session_id, idempotency_key):
+def book_class(
+    member: User, class_session_id: int, idempotency_key: str | None
+) -> tuple[BookingResponse, int]:
     if not idempotency_key or not idempotency_key.strip() or len(idempotency_key) > 255:
         raise serializers.ValidationError(
             {"Idempotency-Key": ("Provide a nonblank key of at most 255 characters.")}
@@ -127,7 +132,7 @@ def book_class(member, class_session_id, idempotency_key):
         if previous.request_fingerprint != fingerprint:
             raise IdempotencyConflict()
 
-        return previous.response_body, previous.response_status
+        return cast(BookingResponse, previous.response_body), previous.response_status
 
     session = get_object_or_404(
         ClassSessions.objects.select_for_update(
@@ -136,7 +141,7 @@ def book_class(member, class_session_id, idempotency_key):
     )
     # check_class_availability(session)
     booking = _create_booking(member.id, session)
-    body = {
+    body: BookingResponse = {
         "id": booking.pk,
         "class_session_id": booking.class_session_id,
         "status": booking.status,
@@ -150,11 +155,11 @@ def book_class(member, class_session_id, idempotency_key):
         response_status=201,
         response_body=body,
     )
-    return record.response_body, record.response_status
+    return cast(BookingResponse, record.response_body), record.response_status
 
 
 @transaction.atomic
-def cancel_booking(member, booking_id):
+def cancel_booking(member: User, booking_id: int) -> bool:
     get_user_model().objects.select_for_update(no_key=True).get(pk=member.pk)
     booking = get_object_or_404(
         Booking.objects.select_for_update(of=("self",))
@@ -201,7 +206,7 @@ def cancel_booking(member, booking_id):
     return True
 
 
-def is_waitlist_eligible(member, class_session: ClassSessions):
+def is_waitlist_eligible(member: User, class_session: ClassSessions) -> bool:
     now = timezone.now()
     if class_session.starts_at <= now:
         raise ClassAlreadyStarted()
@@ -229,7 +234,7 @@ def is_waitlist_eligible(member, class_session: ClassSessions):
 
 
 @transaction.atomic
-def join_waitlist(member, class_session_id):
+def join_waitlist(member: User, class_session_id: int) -> WaitlistEntry:
     get_user_model().objects.select_for_update(no_key=True).get(pk=member.pk)
     class_session = get_object_or_404(
         ClassSessions.objects.select_for_update(),
@@ -244,7 +249,7 @@ def join_waitlist(member, class_session_id):
 
 
 @transaction.atomic
-def promote_waitlist_entry(class_session_id):
+def promote_waitlist_entry(class_session_id: int) -> None:
     class_session = get_object_or_404(
         ClassSessions.objects.select_for_update(), pk=class_session_id)
     waiting_list = (
@@ -270,3 +275,20 @@ def promote_waitlist_entry(class_session_id):
             continue
         except (NoSeatsAvailable, ClassAlreadyStarted):
             break
+
+
+@transaction.atomic
+def withdraw_waitlist_entry(
+    member: User, class_session_id: int
+) -> WaitlistEntry | None:
+    """Withdraw an owned waiting entry, returning None when it does not exist."""
+    entry = WaitlistEntry.objects.select_for_update().filter(
+        class_session_id=class_session_id,
+        status=EntryStatus.WAITING,
+        member=member,
+    ).first()
+    if entry is not None:
+        entry.status = EntryStatus.WITHDRAWN
+        entry.withdrawn_at = timezone.now()
+        entry.save(update_fields=["status", "withdrawn_at"])
+    return entry

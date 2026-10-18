@@ -1,7 +1,10 @@
+from typing import cast
+
 from django.db.models import Count, F, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -13,13 +16,14 @@ from apps.studios.serializers import (
     DateRangeSerializer,
     ListClassSessionSerializer,
 )
+from apps.studios.types import DateRangeData
 
 
 class CreateSession(APIView):
     """Allow staff to schedule a class in the studio identified by the URL."""
     permission_classes = (IsStudioStaff,)
 
-    def post(self, request, studio_id: int):
+    def post(self, request: Request, studio_id: int) -> Response:
         """Validate scheduling data and bind the class to the URL's studio."""
         studio = get_object_or_404(Studio, pk=studio_id)
         serializer = ClassSessionSerializer(data=request.data)
@@ -38,7 +42,7 @@ class CreateSession(APIView):
 
 class ListClassSessionsAPI(APIView):
     """Browse future classes with optional date bounds and remaining seats."""
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         """Return future classes with confirmed bookings subtracted from capacity."""
         q_params = request.query_params
         now = timezone.now()
@@ -46,7 +50,7 @@ class ListClassSessionsAPI(APIView):
         if q_params:
             params_serializer = DateRangeSerializer(data=q_params)
             params_serializer.is_valid(raise_exception=True)
-            dates = params_serializer.validated_data
+            dates = cast(DateRangeData, params_serializer.validated_data)
             class_sessions = class_sessions.filter(starts_at__date__range=(
                 dates['start_date'],
                 dates['end_date'],

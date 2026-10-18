@@ -88,7 +88,10 @@ class ModelIntegrityTests(TestCase):
                 ClassSessions.objects.filter(pk=self.session.pk).update(**{field: 0})
 
     def test_pack_requires_nonnegative_grant_and_expiry_after_grant(self) -> None:
-        for values in [{"credits_remaining": -1}, {"expires_at": self.pack.granted_at}]:
+        invalid_values: list[dict[str, object]] = [
+            {"credits_remaining": -1}, {"expires_at": self.pack.granted_at}
+        ]
+        for values in invalid_values:
             with (
                 self.subTest(values=values),
                 self.assertRaises(IntegrityError),

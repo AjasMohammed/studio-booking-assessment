@@ -7,24 +7,36 @@ from django.http import Http404
 from django.test import TestCase
 from rest_framework.exceptions import ValidationError
 
+from apps.accounts.models import User
+from apps.bookings.exceptions import IdempotencyConflict
 from apps.bookings.models import Booking, BookingStatus, IdempotencyRecord
-from apps.bookings.services import IdempotencyConflict, book_class
-from apps.studios.models import CreditKind, CreditMovement, CreditPack, Studio
+from apps.bookings.services import book_class
+from apps.bookings.types import BookingResponse
+from apps.studios.models import (
+    ClassSessions,
+    CreditKind,
+    CreditMovement,
+    CreditPack,
+    Studio,
+)
 from apps.testing import DomainFixtures
 
 
 class BookingServiceTests(DomainFixtures, TestCase):
-    def book(self, key="request-1", session=None, member=None):
+    def book(
+        self, key: str | None = "request-1", session: ClassSessions | None = None,
+        member: User | None = None,
+    ) -> tuple[BookingResponse, int]:
         return book_class(member or self.member, (session or self.session).pk, key)
 
-    def assert_no_booking_writes(self):
+    def assert_no_booking_writes(self) -> None:
         self.assertFalse(Booking.objects.exists())
         self.assertFalse(IdempotencyRecord.objects.exists())
         self.assertFalse(
             CreditMovement.objects.filter(kind=CreditKind.BOOKING).exists()
         )
 
-    def test_booking_charges_and_records_exact_cost(self):
+    def test_booking_charges_and_records_exact_cost(self) -> None:
         pack = self.make_pack()
         body, status = self.book()
         pack.refresh_from_db()
@@ -37,7 +49,7 @@ class BookingServiceTests(DomainFixtures, TestCase):
         self.assertEqual(movement.pack_id, pack.pk)
         self.assertEqual(IdempotencyRecord.objects.get().response_body, body)
 
-    def test_spends_earliest_expiry_even_if_created_last(self):
+    def test_spends_earliest_expiry_even_if_created_last(self) -> None:
         later = self.make_pack(5, expires_at=self.now + timedelta(days=20))
         earlier = self.make_pack(2, expires_at=self.now + timedelta(days=10))
         self.session.credit_cost = 4
@@ -53,7 +65,7 @@ class BookingServiceTests(DomainFixtures, TestCase):
             [(earlier.pk, -2), (later.pk, -2)],
         )
 
-    def test_spends_only_needed_amount_across_three_packs(self):
+    def test_spends_only_needed_amount_across_three_packs(self) -> None:
         for index, amount in enumerate([2, 3, 5]):
             self.make_pack(amount, expires_at=self.now + timedelta(days=index + 1))
         self.session.credit_cost = 6
@@ -68,7 +80,7 @@ class BookingServiceTests(DomainFixtures, TestCase):
             [0, 0, 4],
         )
 
-    def test_equal_expiries_use_primary_key_as_tiebreaker(self):
+    def test_equal_expiries_use_primary_key_as_tiebreaker(self) -> None:
         first = self.make_pack(3)
         second = self.make_pack(3)
         self.book()
@@ -76,19 +88,19 @@ class BookingServiceTests(DomainFixtures, TestCase):
         second.refresh_from_db()
         self.assertEqual((first.credits_remaining, second.credits_remaining), (0, 3))
 
-    def test_zero_balance_pack_is_skipped(self):
+    def test_zero_balance_pack_is_skipped(self) -> None:
         self.make_pack(0, expires_at=self.now + timedelta(days=1))
         self.make_pack(3)
         self.book()
         self.assertEqual(CreditMovement.objects.filter(kind="booking").count(), 1)
 
-    def test_exact_balance_can_be_fully_spent(self):
+    def test_exact_balance_can_be_fully_spent(self) -> None:
         pack = self.make_pack(3)
         self.book()
         pack.refresh_from_db()
         self.assertEqual(pack.credits_remaining, 0)
 
-    def test_insufficient_credits_leave_everything_unchanged(self):
+    def test_insufficient_credits_leave_everything_unchanged(self) -> None:
         pack = self.make_pack(2)
         with self.assertRaises(ValidationError):
             self.book()
@@ -96,12 +108,12 @@ class BookingServiceTests(DomainFixtures, TestCase):
         self.assertEqual(pack.credits_remaining, 2)
         self.assert_no_booking_writes()
 
-    def test_no_packs_rejects_paid_booking(self):
+    def test_no_packs_rejects_paid_booking(self) -> None:
         with self.assertRaises(ValidationError):
             self.book()
         self.assert_no_booking_writes()
 
-    def test_other_member_and_studio_credits_cannot_be_spent(self):
+    def test_other_member_and_studio_credits_cannot_be_spent(self) -> None:
         other_studio = Studio.objects.create(name="Pilates")
         self.make_pack(10, member=self.other_member)
         self.make_pack(10, studio=other_studio)
@@ -112,7 +124,7 @@ class BookingServiceTests(DomainFixtures, TestCase):
             set(CreditPack.objects.values_list("credits_remaining", flat=True)), {10}
         )
 
-    def test_expired_exactly_expiring_and_future_grants_are_excluded(self):
+    def test_expired_exactly_expiring_and_future_grants_are_excluded(self) -> None:
         self.make_pack(10, expires_at=self.now - timedelta(seconds=1))
         self.make_pack(10, expires_at=self.now)
         self.make_pack(10, granted_at=self.now + timedelta(seconds=1))
@@ -123,12 +135,12 @@ class BookingServiceTests(DomainFixtures, TestCase):
             self.book()
         self.assert_no_booking_writes()
 
-    def test_pack_is_usable_exactly_at_grant_time(self):
+    def test_pack_is_usable_exactly_at_grant_time(self) -> None:
         self.make_pack(3, granted_at=self.now)
         with patch("apps.bookings.services.timezone.now", return_value=self.now):
             self.assertEqual(self.book()[1], 201)
 
-    def test_started_class_rejects_without_charging(self):
+    def test_started_class_rejects_without_charging(self) -> None:
         self.make_pack()
         for delta in [timedelta(seconds=-1), timedelta(0)]:
             with self.subTest(delta=delta):
@@ -141,12 +153,12 @@ class BookingServiceTests(DomainFixtures, TestCase):
                     self.book()
                 self.assert_no_booking_writes()
 
-    def test_missing_class_is_404(self):
+    def test_missing_class_is_404(self) -> None:
         with self.assertRaises(Http404):
             book_class(self.member, 999999, "missing")
         self.assert_no_booking_writes()
 
-    def test_full_class_rejects_without_charge(self):
+    def test_full_class_rejects_without_charge(self) -> None:
         self.make_pack()
         self.make_pack(member=self.other_member)
         self.session.capacity = 1
@@ -169,7 +181,7 @@ class BookingServiceTests(DomainFixtures, TestCase):
             ),
         )
 
-    def test_cancelled_booking_does_not_consume_capacity(self):
+    def test_cancelled_booking_does_not_consume_capacity(self) -> None:
         self.make_pack()
         Booking.objects.create(
             member=self.other_member,
@@ -183,14 +195,14 @@ class BookingServiceTests(DomainFixtures, TestCase):
         self.session.save()
         self.assertEqual(self.book()[1], 201)
 
-    def test_free_class_needs_no_pack_or_zero_value_movement(self):
+    def test_free_class_needs_no_pack_or_zero_value_movement(self) -> None:
         self.session.credit_cost = 0
         self.session.save()
         body, _ = self.book()
         self.assertEqual(body["credits_charged"], 0)
         self.assertFalse(CreditMovement.objects.exists())
 
-    def test_retry_replays_response_even_when_last_seat_is_full(self):
+    def test_retry_replays_response_even_when_last_seat_is_full(self) -> None:
         pack = self.make_pack(3)
         self.session.capacity = 1
         self.session.save()
@@ -201,14 +213,14 @@ class BookingServiceTests(DomainFixtures, TestCase):
         self.assertEqual(Booking.objects.count(), 1)
         self.assertEqual(CreditMovement.objects.filter(kind="booking").count(), 1)
 
-    def test_retry_after_class_started_replays_original_response(self):
+    def test_retry_after_class_started_replays_original_response(self) -> None:
         self.make_pack()
         original = self.book()
         self.session.starts_at = self.now - timedelta(days=1)
         self.session.save()
         self.assertEqual(self.book(), original)
 
-    def test_retry_after_cancellation_does_not_create_new_booking(self):
+    def test_retry_after_cancellation_does_not_create_new_booking(self) -> None:
         self.make_pack()
         original = self.book()
         Booking.objects.filter(pk=original[0]["id"]).update(
@@ -218,7 +230,7 @@ class BookingServiceTests(DomainFixtures, TestCase):
         self.assertEqual(Booking.objects.count(), 1)
         self.assertEqual(CreditMovement.objects.filter(kind="booking").count(), 1)
 
-    def test_new_key_after_cancellation_can_create_a_new_booking(self):
+    def test_new_key_after_cancellation_can_create_a_new_booking(self) -> None:
         pack = self.make_pack()
         original, _ = self.book()
         Booking.objects.filter(pk=original["id"]).update(
@@ -231,7 +243,7 @@ class BookingServiceTests(DomainFixtures, TestCase):
         pack.refresh_from_db()
         self.assertEqual(pack.credits_remaining, 4)
 
-    def test_reusing_key_for_another_class_is_conflict(self):
+    def test_reusing_key_for_another_class_is_conflict(self) -> None:
         self.make_pack()
         self.book()
         other_class = self.make_session()
@@ -239,14 +251,14 @@ class BookingServiceTests(DomainFixtures, TestCase):
             self.book(session=other_class)
         self.assertEqual(Booking.objects.count(), 1)
 
-    def test_different_members_may_use_same_key(self):
+    def test_different_members_may_use_same_key(self) -> None:
         self.make_pack()
         self.make_pack(member=self.other_member)
         self.book()
         self.book(member=self.other_member)
         self.assertEqual(IdempotencyRecord.objects.count(), 2)
 
-    def test_new_key_does_not_double_charge_existing_confirmed_booking(self):
+    def test_new_key_does_not_double_charge_existing_confirmed_booking(self) -> None:
         pack = self.make_pack()
         self.book()
         with self.assertRaises(ValidationError):
@@ -255,31 +267,31 @@ class BookingServiceTests(DomainFixtures, TestCase):
         self.assertEqual(pack.credits_remaining, 7)
         self.assertEqual(Booking.objects.count(), 1)
 
-    def test_invalid_keys_are_rejected_without_writes(self):
+    def test_invalid_keys_are_rejected_without_writes(self) -> None:
         self.make_pack()
         for key in [None, "", "   ", "a" * 256]:
             with self.subTest(key=key), self.assertRaises(ValidationError):
                 self.book(key=key)
             self.assert_no_booking_writes()
 
-    def test_maximum_key_length_is_accepted(self):
+    def test_maximum_key_length_is_accepted(self) -> None:
         self.make_pack()
         self.assertEqual(self.book(key="a" * 255)[1], 201)
 
-    def test_failed_attempt_can_retry_with_same_key_after_grant(self):
+    def test_failed_attempt_can_retry_with_same_key_after_grant(self) -> None:
         with self.assertRaises(ValidationError):
             self.book()
         self.assert_no_booking_writes()
         self.make_pack()
         self.assertEqual(self.book()[1], 201)
 
-    def test_second_debit_failure_rolls_back_all_allocations(self):
+    def test_second_debit_failure_rolls_back_all_allocations(self) -> None:
         first = self.make_pack(2, expires_at=self.now + timedelta(days=1))
         second = self.make_pack(5)
         create = CreditMovement.objects.create
         calls = []
 
-        def fail_second_debit(**kwargs):
+        def fail_second_debit(**kwargs: object) -> CreditMovement:
             calls.append(kwargs)
             if len(calls) == 2:
                 raise IntegrityError("simulated second debit failure")
@@ -298,7 +310,7 @@ class BookingServiceTests(DomainFixtures, TestCase):
         self.assertEqual((first.credits_remaining, second.credits_remaining), (2, 5))
         self.assert_no_booking_writes()
 
-    def test_idempotency_save_failure_rolls_back_booking_and_charge(self):
+    def test_idempotency_save_failure_rolls_back_booking_and_charge(self) -> None:
         pack = self.make_pack()
         with (
             patch(
@@ -312,7 +324,7 @@ class BookingServiceTests(DomainFixtures, TestCase):
         self.assertEqual(pack.credits_remaining, 10)
         self.assert_no_booking_writes()
 
-    def test_cutoff_is_captured_from_class_start_not_booking_time(self):
+    def test_cutoff_is_captured_from_class_start_not_booking_time(self) -> None:
         self.make_pack()
         body, _ = self.book()
         self.assertEqual(
@@ -320,7 +332,7 @@ class BookingServiceTests(DomainFixtures, TestCase):
             self.session.starts_at - timedelta(hours=4),
         )
 
-    def test_zero_cutoff_deadline_is_class_start(self):
+    def test_zero_cutoff_deadline_is_class_start(self) -> None:
         self.make_pack()
         self.studio.cancellation_cutoff_hours = 0
         self.studio.save()
@@ -330,7 +342,7 @@ class BookingServiceTests(DomainFixtures, TestCase):
             self.session.starts_at,
         )
 
-    def test_cutoff_uses_studio_local_clock_across_dst(self):
+    def test_cutoff_uses_studio_local_clock_across_dst(self) -> None:
         # Both local deadlines below exist unambiguously: this tests wall-clock policy.
         self.make_pack()
         zone = ZoneInfo("America/New_York")
@@ -351,7 +363,9 @@ class BookingServiceTests(DomainFixtures, TestCase):
                 expected = starts_at.astimezone(zone) - timedelta(hours=4)
                 self.assertEqual(actual.astimezone(UTC), expected.astimezone(UTC))
 
-    def test_dst_deadline_policy_for_ambiguous_and_nonexistent_local_times(self):
+    def test_dst_deadline_policy_for_ambiguous_and_nonexistent_local_times(
+        self,
+    ) -> None:
         self.studio.timezone = "America/New_York"
         self.studio.cancellation_cutoff_hours = 1
         self.studio.save()
@@ -377,7 +391,7 @@ class BookingServiceTests(DomainFixtures, TestCase):
                     Booking.objects.get(pk=body["id"]).cancellation_deadline, expected
                 )
 
-    def test_zero_cutoff_during_repeated_hour_keeps_exact_start_instant(self):
+    def test_zero_cutoff_during_repeated_hour_keeps_exact_start_instant(self) -> None:
         self.studio.timezone = "America/New_York"
         self.studio.cancellation_cutoff_hours = 0
         self.studio.save()

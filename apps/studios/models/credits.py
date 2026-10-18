@@ -1,8 +1,13 @@
+from typing import TYPE_CHECKING, cast
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Q
 from django.utils import timezone
+
+if TYPE_CHECKING:
+    from apps.bookings.models import Booking
 
 
 class CreditPack(models.Model):
@@ -106,11 +111,12 @@ class CreditMovement(models.Model):
         """Validate allocation ownership and the amount of a newly added grant."""
         super().clean()
         if self.pack_id and self.booking_id:
-            if self.pack.member_id != self.booking.member_id:
+            booking = cast("Booking", self.booking)
+            if self.pack.member_id != booking.member_id:
                 raise ValidationError(
                     "Pack and booking must belong to the same member."
                 )
-            if self.pack.studio_id != self.booking.class_session.studio_id:
+            if self.pack.studio_id != booking.class_session.studio_id:
                 raise ValidationError(
                     "Pack and booking must belong to the same studio."
                 )

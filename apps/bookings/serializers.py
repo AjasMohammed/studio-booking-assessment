@@ -18,7 +18,7 @@ class BookingClassSessionSerializer(ClassSessionSerializer):
         read_only_fields = fields
 
 
-class BookingSerializer(serializers.ModelSerializer):
+class BookingSerializer(serializers.ModelSerializer[Booking]):
     """Represent booking history with class details and captured booking terms."""
 
     class_session = BookingClassSessionSerializer(read_only=True)
@@ -39,7 +39,7 @@ class BookingSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class WaitlistHistorySerializer(serializers.ModelSerializer):
+class WaitlistHistorySerializer(serializers.ModelSerializer[WaitlistEntry]):
     """Represent a member's waitlist history, including its resulting booking ID."""
 
     class_session = BookingClassSessionSerializer(read_only=True)
@@ -61,7 +61,7 @@ class WaitlistHistorySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class WaitlistSerializer(serializers.ModelSerializer):
+class WaitlistSerializer(serializers.ModelSerializer[WaitlistEntry]):
     """Represent a waitlist entry with nested member and class details."""
     class_session = ClassSessionSerializer()
     member = UserSerializer()

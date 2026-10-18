@@ -1,4 +1,5 @@
 from rest_framework import status
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -11,7 +12,7 @@ class CreateStudio(APIView):
     """Allow staff to create a studio and its cancellation policy."""
     permission_classes = (IsStudioStaff,)
 
-    def post(self, request):
+    def post(self, request: Request) -> Response:
         """Validate studio settings and return the created studio ID."""
         data = request.data
         serizlizer = StudioSerializer(data=data)
@@ -30,7 +31,7 @@ class ListStudiosAPI(APIView):
     """Allow staff to browse studio configuration."""
     permission_classes = (IsStudioStaff,)
 
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         """Return all studio configurations to staff."""
         studios = Studio.objects.all()
         serializer = StudioSerializer(studios, many=True)

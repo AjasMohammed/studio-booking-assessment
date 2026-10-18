@@ -1,5 +1,6 @@
 """Real competing transactions; skipped on SQLite, which has no row locks."""
 
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from queue import Queue
@@ -17,20 +18,25 @@ from apps.bookings.models import Booking, IdempotencyRecord
 from apps.bookings.services import book_class
 from apps.studios.models import ClassSessions, CreditMovement, CreditPack
 from apps.testing import DomainFixtures
+from apps.testing_types import RaceResult
 
 
 @skipUnless(connection.vendor == "postgresql", "Requires PostgreSQL row locking.")
 class BookingConcurrencyTests(DomainFixtures, TransactionTestCase):
-    def race(self, calls, *, lock_classes=(), lock_packs=(), after_wait=None):
+    def race(
+        self, calls: Sequence[tuple[int, int, str]], *,
+        lock_classes: Sequence[int] = (), lock_packs: Sequence[int] = (),
+        after_wait: Callable[[], None] | None = None,
+    ) -> list[RaceResult]:
         """Queue workers behind real locks, then release them together.
 
         No barrier is inserted inside the service's critical section: a correct
         member lock must be able to serialize requests before their key lookup.
         """
-        pids = Queue()
+        pids: Queue[int] = Queue()
         start = Event()
 
-        def worker(member_id, class_id, key):
+        def worker(member_id: int, class_id: int, key: str) -> RaceResult:
             close_old_connections()
             try:
                 with connection.cursor() as cursor:
@@ -91,7 +97,7 @@ class BookingConcurrencyTests(DomainFixtures, TransactionTestCase):
                     start.set()
             return [future.result(timeout=15) for future in futures]
 
-    def test_two_members_competing_for_last_seat_confirm_only_one(self):
+    def test_two_members_competing_for_last_seat_confirm_only_one(self) -> None:
         self.make_pack()
         self.make_pack(member=self.other_member)
         self.session.capacity = 1
@@ -107,7 +113,7 @@ class BookingConcurrencyTests(DomainFixtures, TransactionTestCase):
         self.assertEqual(Booking.objects.filter(status="confirmed").count(), 1)
         self.assertEqual(CreditMovement.objects.filter(kind="booking").count(), 1)
 
-    def test_simultaneous_identical_retries_replay_one_success(self):
+    def test_simultaneous_identical_retries_replay_one_success(self) -> None:
         pack = self.make_pack()
         self.session.capacity = 1
         self.session.save()
@@ -120,7 +126,9 @@ class BookingConcurrencyTests(DomainFixtures, TransactionTestCase):
         pack.refresh_from_db()
         self.assertEqual(pack.credits_remaining, 7)
 
-    def test_same_key_for_different_classes_returns_conflict_not_server_error(self):
+    def test_same_key_for_different_classes_returns_conflict_not_server_error(
+        self,
+    ) -> None:
         self.make_pack()
         other_session = self.make_session()
         results = self.race(
@@ -134,7 +142,7 @@ class BookingConcurrencyTests(DomainFixtures, TransactionTestCase):
         self.assertEqual(Booking.objects.count(), 1)
         self.assertEqual(IdempotencyRecord.objects.count(), 1)
 
-    def test_different_classes_cannot_overspend_shared_account(self):
+    def test_different_classes_cannot_overspend_shared_account(self) -> None:
         pack = self.make_pack(5)
         other_session = self.make_session()
         results = self.race(
@@ -149,7 +157,9 @@ class BookingConcurrencyTests(DomainFixtures, TransactionTestCase):
         self.assertEqual(pack.credits_remaining, 2)
         self.assertEqual(Booking.objects.count(), 1)
 
-    def test_different_keys_and_classes_can_both_spend_when_balance_suffices(self):
+    def test_different_keys_and_classes_can_both_spend_when_balance_suffices(
+        self,
+    ) -> None:
         pack = self.make_pack(6)
         other_session = self.make_session()
         results = self.race(
@@ -164,11 +174,11 @@ class BookingConcurrencyTests(DomainFixtures, TransactionTestCase):
         self.assertEqual(pack.credits_remaining, 0)
         self.assertEqual(Booking.objects.count(), 2)
 
-    def test_class_starting_during_lock_wait_is_rejected(self):
+    def test_class_starting_during_lock_wait_is_rejected(self) -> None:
         self.make_pack()
         clock = [self.now]
 
-        def advance_clock():
+        def advance_clock() -> None:
             clock[0] = self.session.starts_at
 
         with patch("apps.bookings.services.timezone.now", side_effect=lambda: clock[0]):
@@ -182,11 +192,11 @@ class BookingConcurrencyTests(DomainFixtures, TransactionTestCase):
         self.assertEqual(results[0]["status"], 400, results)
         self.assertFalse(Booking.objects.exists())
 
-    def test_pack_expiring_during_pack_lock_wait_is_not_spent(self):
+    def test_pack_expiring_during_pack_lock_wait_is_not_spent(self) -> None:
         pack = self.make_pack(3, expires_at=self.now + timedelta(hours=1))
         clock = [self.now]
 
-        def advance_clock():
+        def advance_clock() -> None:
             clock[0] = pack.expires_at
 
         with patch("apps.bookings.services.timezone.now", side_effect=lambda: clock[0]):
@@ -202,12 +212,12 @@ class BookingConcurrencyTests(DomainFixtures, TransactionTestCase):
         pack.refresh_from_db()
         self.assertEqual(pack.credits_remaining, 3)
 
-    def test_pack_expiring_during_wait_is_skipped_if_another_pack_can_pay(self):
+    def test_pack_expiring_during_wait_is_skipped_if_another_pack_can_pay(self) -> None:
         expiring = self.make_pack(3, expires_at=self.now + timedelta(hours=1))
         valid = self.make_pack(3)
         clock = [self.now]
 
-        def advance_clock():
+        def advance_clock() -> None:
             clock[0] = expiring.expires_at
 
         with patch("apps.bookings.services.timezone.now", side_effect=lambda: clock[0]):
@@ -223,7 +233,7 @@ class BookingConcurrencyTests(DomainFixtures, TransactionTestCase):
         valid.refresh_from_db()
         self.assertEqual((expiring.credits_remaining, valid.credits_remaining), (3, 0))
 
-    def test_future_pack_becoming_usable_during_wait_can_fund_booking(self):
+    def test_future_pack_becoming_usable_during_wait_can_fund_booking(self) -> None:
         first = self.make_pack(1)
         future = self.make_pack(
             3,
@@ -232,7 +242,7 @@ class BookingConcurrencyTests(DomainFixtures, TransactionTestCase):
         )
         clock = [self.now]
 
-        def advance_clock():
+        def advance_clock() -> None:
             clock[0] = future.granted_at
 
         with patch("apps.bookings.services.timezone.now", side_effect=lambda: clock[0]):

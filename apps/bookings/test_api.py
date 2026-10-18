@@ -1,10 +1,18 @@
+from collections.abc import Iterator, Sequence
 from datetime import timedelta
 
 from django.test import TestCase
-from django.urls import URLResolver, get_resolver, reverse
-from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
+from django.urls import URLPattern, URLResolver, get_resolver, reverse
+from rest_framework.response import Response
+from rest_framework.test import (
+    APIClient,
+    APIRequestFactory,
+    APITestCase,
+    force_authenticate,
+)
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.accounts.models import User
 from apps.bookings.models import (
     Booking,
     BookingStatus,
@@ -18,22 +26,23 @@ from apps.testing import DomainFixtures
 
 
 class BookingHistoryAPITests(DomainFixtures, TestCase):
-    def setUp(self):
+    client: APIClient
+    def setUp(self) -> None:
         super().setUp()
         self.client = APIClient()
         self.url = reverse("my_bookings")
 
-    def test_registered_route_requires_authentication(self):
+    def test_registered_route_requires_authentication(self) -> None:
         self.assertEqual(self.url, "/bookings/me")
         self.assertEqual(self.client.get(self.url).status_code, 401)
 
-    def test_empty_history_returns_empty_list(self):
+    def test_empty_history_returns_empty_list(self) -> None:
         self.client.force_authenticate(self.member)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, [])
 
-    def test_history_includes_both_statuses_and_only_owned_bookings(self):
+    def test_history_includes_both_statuses_and_only_owned_bookings(self) -> None:
         confirmed = Booking.objects.create(
             member=self.member,
             class_session=self.session,
@@ -76,22 +85,23 @@ class BookingHistoryAPITests(DomainFixtures, TestCase):
 
 
 class WaitlistHistoryAPITests(DomainFixtures, TestCase):
-    def setUp(self):
+    client: APIClient
+    def setUp(self) -> None:
         super().setUp()
         self.client = APIClient()
         self.url = reverse("my_waitlist")
 
-    def test_registered_route_requires_authentication(self):
+    def test_registered_route_requires_authentication(self) -> None:
         self.assertEqual(self.url, "/bookings/waitlist/me")
         self.assertEqual(self.client.get(self.url).status_code, 401)
 
-    def test_empty_history_returns_empty_list(self):
+    def test_empty_history_returns_empty_list(self) -> None:
         self.client.force_authenticate(self.member)
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, [])
 
-    def test_history_includes_all_statuses_and_only_owned_entries(self):
+    def test_history_includes_all_statuses_and_only_owned_entries(self) -> None:
         waiting = WaitlistEntry.objects.create(
             member=self.member, class_session=self.session
         )
@@ -144,7 +154,10 @@ class WaitlistHistoryAPITests(DomainFixtures, TestCase):
 
 
 class BookingAPITests(DomainFixtures, TestCase):
-    def post(self, user=None, key="request-1", class_id=None, token=None):
+    def post(
+        self, user: User | None = None, key: str | None = "request-1",
+        class_id: int | None = None, token: str | None = None,
+    ) -> Response:
         headers = {}
         if key is not None:
             headers["HTTP_IDEMPOTENCY_KEY"] = key
@@ -157,7 +170,7 @@ class BookingAPITests(DomainFixtures, TestCase):
             request, class_id=self.session.pk if class_id is None else class_id
         )
 
-    def test_authenticated_request_and_retry_return_same_saved_response(self):
+    def test_authenticated_request_and_retry_return_same_saved_response(self) -> None:
         self.make_pack()
         first = self.post(user=self.member)
         second = self.post(user=self.member)
@@ -167,7 +180,7 @@ class BookingAPITests(DomainFixtures, TestCase):
         self.assertEqual(Booking.objects.count(), 1)
         self.assertEqual(CreditMovement.objects.filter(kind="booking").count(), 1)
 
-    def test_registered_booking_url_calls_view_with_class_id(self):
+    def test_registered_booking_url_calls_view_with_class_id(self) -> None:
         self.make_pack()
         client = APIClient()
         client.force_authenticate(self.member)
@@ -180,54 +193,54 @@ class BookingAPITests(DomainFixtures, TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["class_session_id"], self.session.pk)
 
-    def test_jwt_authentication_passes_correct_member_to_service(self):
+    def test_jwt_authentication_passes_correct_member_to_service(self) -> None:
         self.make_pack()
         token = str(RefreshToken.for_user(self.member).access_token)
         response = self.post(token=token)
         self.assertEqual(response.status_code, 201)
         self.assertEqual(Booking.objects.get().member_id, self.member.pk)
 
-    def test_anonymous_and_invalid_token_are_401(self):
+    def test_anonymous_and_invalid_token_are_401(self) -> None:
         for token in [None, "not-a-valid-jwt"]:
             with self.subTest(token=token):
                 self.assertEqual(self.post(token=token).status_code, 401)
         self.assertFalse(Booking.objects.exists())
 
-    def test_expired_access_token_is_401(self):
+    def test_expired_access_token_is_401(self) -> None:
         token = RefreshToken.for_user(self.member).access_token
         token.set_exp(lifetime=timedelta(seconds=-1))
         self.assertEqual(self.post(token=str(token)).status_code, 401)
         self.assertFalse(Booking.objects.exists())
 
-    def test_inactive_member_cannot_book_with_previously_issued_token(self):
+    def test_inactive_member_cannot_book_with_previously_issued_token(self) -> None:
         token = str(RefreshToken.for_user(self.member).access_token)
         self.member.is_active = False
         self.member.save()
         self.assertEqual(self.post(token=token).status_code, 401)
         self.assertFalse(Booking.objects.exists())
 
-    def test_request_cannot_spend_another_members_credits(self):
+    def test_request_cannot_spend_another_members_credits(self) -> None:
         self.make_pack(member=self.other_member)
         response = self.post(user=self.member)
         self.assertEqual(response.status_code, 400)
         self.assertFalse(Booking.objects.exists())
 
-    def test_missing_key_is_400(self):
+    def test_missing_key_is_400(self) -> None:
         self.assertEqual(self.post(user=self.member, key=None).status_code, 400)
         self.assertFalse(IdempotencyRecord.objects.exists())
 
-    def test_key_reused_for_different_class_is_409(self):
+    def test_key_reused_for_different_class_is_409(self) -> None:
         self.make_pack()
         self.assertEqual(self.post(user=self.member).status_code, 201)
         response = self.post(user=self.member, class_id=self.make_session().pk)
         self.assertEqual(response.status_code, 409)
         self.assertEqual(Booking.objects.count(), 1)
 
-    def test_missing_class_is_404(self):
+    def test_missing_class_is_404(self) -> None:
         self.assertEqual(self.post(user=self.member, class_id=999999).status_code, 404)
 
-    def test_booking_view_is_registered_in_root_urls(self):
-        def callbacks(patterns):
+    def test_booking_view_is_registered_in_root_urls(self) -> None:
+        def callbacks(patterns: Sequence[URLPattern | URLResolver]) -> Iterator[object]:
             for pattern in patterns:
                 if isinstance(pattern, URLResolver):
                     yield from callbacks(pattern.url_patterns)
@@ -239,3 +252,35 @@ class BookingAPITests(DomainFixtures, TestCase):
             list(callbacks(get_resolver().url_patterns)),
             "BookClassAPI must have a route reachable through config.urls.",
         )
+
+
+class WaitlistWithdrawalAPITests(DomainFixtures, APITestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.url = reverse("withdraw_waitlist", args=[self.session.pk])
+        self.entry = WaitlistEntry.objects.create(
+            member=self.member, class_session=self.session,
+        )
+
+    def test_withdrawal_updates_only_the_owned_waiting_entry(self) -> None:
+        other_entry = WaitlistEntry.objects.create(
+            member=self.other_member, class_session=self.session,
+        )
+        self.client.force_authenticate(self.member)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.entry.refresh_from_db()
+        other_entry.refresh_from_db()
+        self.assertEqual(self.entry.status, EntryStatus.WITHDRAWN)
+        self.assertIsNotNone(self.entry.withdrawn_at)
+        self.assertEqual(other_entry.status, EntryStatus.WAITING)
+        self.assertEqual(self.client.post(self.url).status_code, 404)
+
+    def test_withdrawal_requires_authentication_and_an_owned_waiting_entry(
+        self,
+    ) -> None:
+        self.assertEqual(self.client.post(self.url).status_code, 401)
+        self.client.force_authenticate(self.other_member)
+        self.assertEqual(self.client.post(self.url).status_code, 404)
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.status, EntryStatus.WAITING)

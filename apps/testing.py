@@ -1,6 +1,8 @@
 """Shared fixtures for domain tests; helpers do not call the services under test."""
 
 from datetime import timedelta
+from typing import Unpack
+from unittest import TestCase
 
 from django.utils import timezone
 
@@ -12,9 +14,12 @@ from apps.studios.models import (
     CreditPack,
     Studio,
 )
+from apps.testing_types import PackOverrides, SessionOverrides
 
 
-class DomainFixtures:
+class DomainFixtures(TestCase):
+    """Share setup without imposing Django TestCase transaction behavior."""
+
     def setUp(self) -> None:
         super().setUp()
         self.now = timezone.now().replace(microsecond=0)
@@ -24,8 +29,8 @@ class DomainFixtures:
         self.studio = Studio.objects.create(name="Yoga", timezone="Asia/Kolkata")
         self.session = self.make_session()
 
-    def make_session(self, **overrides):
-        values = {
+    def make_session(self, **overrides: Unpack[SessionOverrides]) -> ClassSessions:
+        values: SessionOverrides = {
             "studio": self.studio,
             "starts_at": self.now + timedelta(days=2),
             "duration_minutes": 60,
@@ -35,8 +40,10 @@ class DomainFixtures:
         values.update(overrides)
         return ClassSessions.objects.create(**values)
 
-    def make_pack(self, credits=10, **overrides):
-        values = {
+    def make_pack(
+        self, credits: int = 10, **overrides: Unpack[PackOverrides]
+    ) -> CreditPack:
+        values: PackOverrides = {
             "member": self.member,
             "studio": self.studio,
             "granted_by": self.staff,

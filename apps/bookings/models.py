@@ -1,3 +1,5 @@
+from typing import cast
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -132,12 +134,14 @@ class WaitlistEntry(models.Model):
     def clean(self) -> None:
         """Require any promoted booking to match this entry's member and class."""
         super().clean()
-        if self.booking_id and (
-            self.booking.member_id != self.member_id
-            or self.booking.class_session_id != self.class_session_id
-        ):
-            raise ValidationError(
-                "Promoted booking must match the member and class.")
+        if self.booking_id:
+            booking = cast(Booking, self.booking)
+            if (
+                booking.member_id != self.member_id
+                or booking.class_session_id != self.class_session_id
+            ):
+                raise ValidationError(
+                    "Promoted booking must match the member and class.")
 
 
 class IdempotencyRecord(models.Model):
