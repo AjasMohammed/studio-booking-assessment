@@ -20,6 +20,7 @@ from apps.bookings.models import (
     IdempotencyRecord,
     WaitlistEntry,
 )
+from apps.bookings.services import book_class
 from apps.bookings.views import BookClassAPI
 from apps.studios.models import CreditMovement
 from apps.testing import DomainFixtures
@@ -284,3 +285,29 @@ class WaitlistWithdrawalAPITests(DomainFixtures, APITestCase):
         self.assertEqual(self.client.post(self.url).status_code, 404)
         self.entry.refresh_from_db()
         self.assertEqual(self.entry.status, EntryStatus.WAITING)
+
+
+class WaitlistJoinAPITests(DomainFixtures, APITestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.session.capacity = 1
+        self.session.save()
+        self.make_pack(member=self.other_member)
+        book_class(self.other_member, self.session.pk, "owner")
+        self.url = reverse("join_waitlist", args=[self.session.pk])
+
+    def test_join_requires_authentication(self) -> None:
+        self.assertEqual(self.client.post(self.url).status_code, 401)
+        self.assertFalse(WaitlistEntry.objects.exists())
+
+    def test_join_uses_authenticated_member_and_rejects_duplicate(self) -> None:
+        self.client.force_authenticate(self.member)
+        response = self.client.post(
+            self.url, {"member": self.other_member.pk}, format="json"
+        )
+        self.assertEqual(response.status_code, 201)
+        entry = WaitlistEntry.objects.get(pk=response.data["id"])
+        self.assertEqual(entry.member_id, self.member.pk)
+        self.assertEqual(entry.status, EntryStatus.WAITING)
+        self.assertEqual(self.client.post(self.url).status_code, 400)
+        self.assertEqual(WaitlistEntry.objects.count(), 1)

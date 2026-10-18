@@ -14,8 +14,8 @@ from django.test import TransactionTestCase
 from rest_framework.exceptions import APIException
 
 from apps.accounts.models import User
-from apps.bookings.models import Booking, IdempotencyRecord
-from apps.bookings.services import book_class
+from apps.bookings.models import Booking, EntryStatus, IdempotencyRecord, WaitlistEntry
+from apps.bookings.services import book_class, cancel_booking, join_waitlist
 from apps.studios.models import ClassSessions, CreditMovement, CreditPack
 from apps.testing import DomainFixtures
 from apps.testing_types import RaceResult
@@ -23,6 +23,77 @@ from apps.testing_types import RaceResult
 
 @skipUnless(connection.vendor == "postgresql", "Requires PostgreSQL row locking.")
 class BookingConcurrencyTests(DomainFixtures, TransactionTestCase):
+    def test_concurrent_cancellations_promote_each_waiter_once(self) -> None:
+        first_pack = self.make_pack()
+        second_pack = self.make_pack(member=self.other_member)
+        first, _ = book_class(self.member, self.session.pk, "first")
+        second, _ = book_class(self.other_member, self.session.pk, "second")
+        waiters = [User.objects.create_user(username=f"waiter-{i}") for i in range(2)]
+        packs = [self.make_pack(member=waiter) for waiter in waiters]
+        entries = [join_waitlist(waiter, self.session.pk) for waiter in waiters]
+        pids: Queue[int] = Queue()
+
+        def cancel(member_id: int, booking_id: int) -> None:
+            close_old_connections()
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SET lock_timeout = '8s'")
+                    cursor.execute("SET statement_timeout = '12s'")
+                    cursor.execute("SELECT pg_backend_pid()")
+                    pids.put(cursor.fetchone()[0])
+                cancel_booking(User.objects.get(pk=member_id), booking_id)
+            finally:
+                connections["default"].close()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            with transaction.atomic():
+                ClassSessions.objects.select_for_update().get(pk=self.session.pk)
+                futures = [
+                    executor.submit(cancel, self.member.pk, first["id"]),
+                    executor.submit(cancel, self.other_member.pk, second["id"]),
+                ]
+                worker_pids = [pids.get(timeout=8) for _ in futures]
+                deadline = monotonic() + 4
+                waiting = 0
+                while monotonic() < deadline:
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT pg_stat_clear_snapshot()")
+                        cursor.execute(
+                            "SELECT COUNT(*) FROM pg_stat_activity "
+                            "WHERE pid = ANY(%s) AND wait_event_type = 'Lock'",
+                            [worker_pids],
+                        )
+                        waiting = cursor.fetchone()[0]
+                    if waiting == 2:
+                        break
+                    sleep(0.01)
+                self.assertEqual(
+                    waiting, 2, "Both cancellations must reach a lock wait."
+                )
+            for future in futures:
+                future.result(timeout=15)
+
+        self.assertEqual(
+            set(self.session.bookings.filter(status="confirmed")
+                .values_list("member_id", flat=True)),
+            {waiter.pk for waiter in waiters},
+        )
+        self.assertEqual(self.session.bookings.filter(status="cancelled").count(), 2)
+        for pack in [first_pack, second_pack]:
+            pack.refresh_from_db()
+            self.assertEqual(pack.credits_remaining, 10)
+        for entry, pack in zip(entries, packs, strict=True):
+            entry.refresh_from_db()
+            pack.refresh_from_db()
+            self.assertEqual(entry.status, EntryStatus.PROMOTED)
+            self.assertEqual(pack.credits_remaining, 7)
+            self.assertEqual(
+                CreditMovement.objects.filter(pack=pack, kind="booking").count(), 1
+            )
+        self.assertEqual(
+            WaitlistEntry.objects.filter(status=EntryStatus.PROMOTED).count(), 2
+        )
+
     def race(
         self, calls: Sequence[tuple[int, int, str]], *,
         lock_classes: Sequence[int] = (), lock_packs: Sequence[int] = (),

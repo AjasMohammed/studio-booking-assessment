@@ -147,6 +147,7 @@ def book_class(
         pk=class_session_id,
     )
     booking = _create_booking(member.id, session)
+    withdraw_waitlist_entry(member, class_session_id)
     body: BookingResponse = {
         "id": booking.pk,
         "class_session_id": booking.class_session_id,
