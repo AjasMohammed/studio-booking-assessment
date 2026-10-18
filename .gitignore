@@ -33,6 +33,9 @@ staticfiles/
 htmlcov/
 coverage.xml
 
+# Local explanatory guides and generated HTML documentation
+/docs/
+
 # Local editor and OS files
 .vscode/
 .idea/

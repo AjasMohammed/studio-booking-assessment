@@ -1,12 +1,15 @@
-from django.db.models import Prefetch, Q, Sum
+from typing import cast
+
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from rest_framework import status
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.studios.models import CreditMovement, CreditPack, Studio
+from apps.accounts.models import User
+from apps.studios.models import Studio
 from apps.studios.permissions import IsStudioStaff
+from apps.studios.selectors import credit_balances
 from apps.studios.serializers import (
     CreditBalanceQuerySerializer,
     CreditMovementSerializer,
@@ -14,18 +17,18 @@ from apps.studios.serializers import (
     HistoricalStudioCreditBalanceSerializer,
     StudioCreditBalanceSerializer,
 )
-from apps.studios.services import grant_credit_pack
+from apps.studios.services import credit_history, grant_credit_pack
+from apps.studios.types import CreditBalanceQuery, CreditGrantData
 
 
 class CreditMovementAPI(APIView):
-    """List credit movements belonging to the authenticated user's packs."""
+    """List the member's credit movements and calculated expiry events."""
 
-    def get(self, request):
-        """Return stored events in accounting order, including expired pack history."""
-        movements = CreditMovement.objects.filter(
-            pack__member=request.user
-        ).select_related("pack__studio")
-        serializer = CreditMovementSerializer(movements, many=True)
+    def get(self, request: Request) -> Response:
+        """Explain balance changes without writing to the credit ledger."""
+        events = credit_history(cast(User, request.user))
+        # many=True accepts lists; the plain Serializer stubs only model one instance.
+        serializer = CreditMovementSerializer(events, many=True)  # type: ignore[arg-type]
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -33,15 +36,18 @@ class GrantCreditAPI(APIView):
     """Allow staff to grant a credit pack in the studio identified by the URL."""
     permission_classes = (IsStudioStaff,)
 
-    def post(self, request, studio_id: int):
+    def post(self, request: Request, studio_id: int) -> Response:
         """Validate a grant and create its pack and accounting movement together."""
-        data: dict = request.data
+        data = request.data
         studio = get_object_or_404(Studio, pk=studio_id)
         credit_serializer = GrantCreditPackSerializer(data=data)
         credit_serializer.is_valid(raise_exception=True)
 
         credit_pack = grant_credit_pack(
-            request.user, studio, credit_serializer.validated_data)
+            cast(User, request.user),
+            studio,
+            cast(CreditGrantData, credit_serializer.validated_data),
+        )
         payload = {
             "message": "Credit granted successfully!",
             "id": credit_pack.id,
@@ -52,47 +58,17 @@ class GrantCreditAPI(APIView):
 
 class CreditBalanceAPI(APIView):
     """Report current or historical spendable credits grouped by studio."""
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         """Use movements for an explicit snapshot and stored balances otherwise."""
         # Validate an explicit ?at= as blank input instead of an omitted HTML field.
         params = CreditBalanceQuerySerializer(data=request.query_params.dict())
         params.is_valid(raise_exception=True)
-        at = params.validated_data.get("at")
-        member = request.user
-        balance_time = at if at is not None else timezone.now()
-        packs = CreditPack.objects.filter(
-            member=member,
-            expires_at__gt=balance_time,
-            granted_at__lte=balance_time,
-        )
-        serializer_class = StudioCreditBalanceSerializer
-        total = Sum("credit_packs__credits_remaining", default=0)
-        if at is not None:
-            # Today's pack balance cannot reconstruct charges or refunds at a past time.
-            packs = packs.annotate(
-                balance_at=Sum(
-                    "movements__amount",
-                    filter=Q(movements__effective_at__lte=at),
-                    default=0,
-                )
-            )
-            total = Sum(
-                "credit_packs__movements__amount",
-                filter=Q(credit_packs__movements__effective_at__lte=at),
-                default=0,
-            )
-            serializer_class = HistoricalStudioCreditBalanceSerializer
-        # Keep aggregate and prefetch filters aligned with the displayed packs.
-        studio_credit_balance = (
-            Studio.objects.filter(
-                credit_packs__member=member,
-                credit_packs__expires_at__gt=balance_time,
-                credit_packs__granted_at__lte=balance_time,
-            ).annotate(
-                total_credits=total,
-            ).prefetch_related(
-                Prefetch("credit_packs", queryset=packs)
-            )
+        at = cast(CreditBalanceQuery, params.validated_data).get("at")
+        member = cast(User, request.user)
+        studio_credit_balance = credit_balances(member, at)
+        serializer_class = (
+            HistoricalStudioCreditBalanceSerializer
+            if at is not None else StudioCreditBalanceSerializer
         )
         serializer = serializer_class(
             studio_credit_balance, many=True)
