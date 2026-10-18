@@ -307,7 +307,7 @@ Replay returns the original response even after cancellation; use `GET
 /bookings/me` for the current booking state. Cancellation can succeed only once;
 a repeated cancellation returns HTTP 400 without refunding again.
 
-## Known limitations and remaining deliverables
+## Known limitations
 
 - Public staff signup and global staff access are intentional assessment
   decisions, described in [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md).
@@ -319,9 +319,47 @@ a repeated cancellation returns HTTP 400 without refunding again.
   a server error. Validation for that case was deferred.
 - The Docker app uses Django's development server. Production serving and
   deployment are outside the current setup.
-- A Postman collection or generated OpenAPI specification is still pending
-  (assessment item 10). The walkthrough above is the current executable API
-  reference; it does not replace that deliverable.
+
+## Postman API collection
+
+Import both files into Postman:
+
+- [Studio collection](postman/Studio.postman_collection.json)
+- [Studio local environment](postman/Studio.postman_environment.json)
+
+Start the Docker stack, select **Studio local**, and keep `base_url` set to
+`http://localhost:8000` (or change it to your server address). Open the collection
+in **Runner**, select all five folders, and run them in their numbered order.
+No account creation, token copying, or ID editing is needed beforehand.
+
+The first request generates new demo usernames, a password, future class/expiry
+dates, and idempotency keys. Login and response scripts fill the environment's
+tokens and IDs. Each run creates application data: three accounts, one studio,
+two classes, credit packs, bookings, and waitlist history. Re-running the complete
+collection generates fresh names. To send a later request individually, first
+run its preceding setup requests in that same selected environment.
+
+The 46 requests demonstrate authentication and refresh rotation, staff access,
+studio/class creation and browsing, grants, booking retries, waitlist withdrawal
+and rejoining, cancellation/refunds, promotion, movements, historical balances,
+and member ownership. Expected 400/401/403/404/409 responses are tested explicitly
+and count as successful checks. The historical timestamp comes from the server's
+grant movement to avoid client-clock assumptions. Run the Django suite separately
+for concurrency, expiry, and other edge cases.
+
+With Node.js and npm installed, the same collection can run from a terminal using
+pinned Newman 6.2.1:
+
+```bash
+npm exec --yes --package=newman@6.2.1 -- newman run \
+  postman/Studio.postman_collection.json \
+  --environment postman/Studio.postman_environment.json --bail
+```
+
+For a different server, append `--env-var base_url=http://localhost:8001`.
+Newman exits with a failure status if a request or assertion fails. The committed
+environment has empty credentials and IDs; runtime values stay in Postman/Newman
+unless explicitly exported. Keep exports containing tokens out of the repository.
 
 ## Run tests with Docker
 

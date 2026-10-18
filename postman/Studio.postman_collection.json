@@ -1,0 +1,2025 @@
+{
+  "info": {
+    "_postman_id": "5bff386e-4220-4832-a0ce-66a78dcf8e28",
+    "name": "Studio — assessment flow",
+    "description": "Run all folders in order with Studio local environment selected. Every run creates three uniquely named demo users, a studio, two classes, and credit packs. Variables, future dates, tokens, and IDs are captured automatically. Expected HTTP 400/401/403/404/409 responses have explicit passing assertions. Authentication is per request. Expiry and concurrency edge cases are covered by the Django test suite; this collection demonstrates the synchronous main API flow. See README.md for startup and runner instructions.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Accounts and authentication",
+      "description": "Run the entire collection in order with the supplied environment selected. The first request creates fresh names, credentials, dates, and keys. Staff signup is intentionally public for assessment review.",
+      "item": [
+        {
+          "name": "01. Sign up staff",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Start a fresh demo; leave the selected base_url unchanged.",
+                  "const suffix = Date.now() + '-' + pm.variables.replaceIn('{{$guid}}').slice(0, 8);",
+                  "pm.environment.set('run_id', '');",
+                  "pm.environment.set('demo_password', '');",
+                  "pm.environment.set('staff_username', '');",
+                  "pm.environment.set('alice_username', '');",
+                  "pm.environment.set('bob_username', '');",
+                  "pm.environment.set('staff_access', '');",
+                  "pm.environment.set('staff_refresh', '');",
+                  "pm.environment.set('alice_access', '');",
+                  "pm.environment.set('alice_refresh', '');",
+                  "pm.environment.set('alice_previous_refresh', '');",
+                  "pm.environment.set('bob_access', '');",
+                  "pm.environment.set('bob_refresh', '');",
+                  "pm.environment.set('alice_id', '');",
+                  "pm.environment.set('bob_id', '');",
+                  "pm.environment.set('studio_id', '');",
+                  "pm.environment.set('class_id', '');",
+                  "pm.environment.set('other_class_id', '');",
+                  "pm.environment.set('class_start', '');",
+                  "pm.environment.set('class_date', '');",
+                  "pm.environment.set('expires_at', '');",
+                  "pm.environment.set('future_at', '');",
+                  "pm.environment.set('historical_at', '');",
+                  "pm.environment.set('booking_key', '');",
+                  "pm.environment.set('bob_booking_key', '');",
+                  "pm.environment.set('alice_pack_id', '');",
+                  "pm.environment.set('bob_pack_id', '');",
+                  "pm.environment.set('booking_id', '');",
+                  "pm.environment.set('booking_response', '');",
+                  "pm.environment.set('withdrawn_entry_id', '');",
+                  "pm.environment.set('waiting_entry_id', '');",
+                  "pm.environment.set('promoted_booking_id', '');",
+                  "",
+                  "pm.environment.set('run_id', suffix);",
+                  "pm.environment.set('demo_password', 'Cedar!9-' + pm.variables.replaceIn('{{$guid}}'));",
+                  "for (const role of ['staff', 'alice', 'bob']) {",
+                  "  pm.environment.set(role + '_username', 'postman-' + role + '-' + suffix);",
+                  "}",
+                  "const starts = new Date(Date.now() + 2 * 86400000).toISOString();",
+                  "pm.environment.set('class_start', starts);",
+                  "pm.environment.set('class_date', starts.slice(0, 10));",
+                  "pm.environment.set('expires_at', new Date(Date.now() + 30 * 86400000).toISOString());",
+                  "pm.environment.set('future_at', new Date(Date.now() + 86400000).toISOString());",
+                  "pm.environment.set('booking_key', 'alice-' + suffix);",
+                  "pm.environment.set('bob_booking_key', 'bob-' + suffix);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/accounts/auth/signup",
+            "description": "Create a new demo account. Only the first request initializes this run.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{staff_username}}\",\n  \"email\": \"{{staff_username}}@example.com\",\n  \"password\": \"{{demo_password}}\",\n  \"role\": \"staff\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "02. Sign up alice",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/accounts/auth/signup",
+            "description": "Create a new demo account. Only the first request initializes this run.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{alice_username}}\",\n  \"email\": \"{{alice_username}}@example.com\",\n  \"password\": \"{{demo_password}}\",\n  \"role\": \"member\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "03. Sign up bob",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/accounts/auth/signup",
+            "description": "Create a new demo account. Only the first request initializes this run.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{bob_username}}\",\n  \"email\": \"{{bob_username}}@example.com\",\n  \"password\": \"{{demo_password}}\",\n  \"role\": \"member\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "04. Log in staff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Log in staff\", function () {",
+                  "pm.expect(pm.response.json().access).to.be.a('string').and.not.empty;",
+                  "pm.expect(pm.response.json().refresh).to.be.a('string').and.not.empty;",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "const tokens = pm.response.json();",
+                  "pm.environment.set('staff_access', tokens.access);",
+                  "pm.environment.set('staff_refresh', tokens.refresh);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/accounts/auth/login",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{staff_username}}\",\n  \"password\": \"{{demo_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "05. Log in alice",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Log in alice\", function () {",
+                  "pm.expect(pm.response.json().access).to.be.a('string').and.not.empty;",
+                  "pm.expect(pm.response.json().refresh).to.be.a('string').and.not.empty;",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "const tokens = pm.response.json();",
+                  "pm.environment.set('alice_access', tokens.access);",
+                  "pm.environment.set('alice_refresh', tokens.refresh);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/accounts/auth/login",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{alice_username}}\",\n  \"password\": \"{{demo_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "06. Log in bob",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Log in bob\", function () {",
+                  "pm.expect(pm.response.json().access).to.be.a('string').and.not.empty;",
+                  "pm.expect(pm.response.json().refresh).to.be.a('string').and.not.empty;",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "const tokens = pm.response.json();",
+                  "pm.environment.set('bob_access', tokens.access);",
+                  "pm.environment.set('bob_refresh', tokens.refresh);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/accounts/auth/login",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{bob_username}}\",\n  \"password\": \"{{demo_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "07. Rotate Alice refresh token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Rotate Alice refresh token\", function () {",
+                  "pm.expect(pm.response.json().refresh).not.to.equal(pm.environment.get('alice_refresh'));",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "pm.environment.set('alice_previous_refresh', pm.environment.get('alice_refresh'));",
+                  "pm.environment.set('alice_access', pm.response.json().access);",
+                  "pm.environment.set('alice_refresh', pm.response.json().refresh);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/accounts/auth/refresh",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{alice_refresh}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "08. Reject reused refresh token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/accounts/auth/refresh",
+            "description": "Expected rejection: rotation blacklists the previous refresh token.",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{alice_previous_refresh}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "09. Reject anonymous booking history",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/bookings/me",
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "10. Resolve member IDs as staff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Resolve member IDs as staff\", function () {",
+                  "const members = pm.response.json();",
+                  "for (const role of ['alice', 'bob']) {",
+                  "  const member = members.find(m => m.username === pm.environment.get(role + '_username'));",
+                  "  pm.expect(member).to.exist;",
+                  "  pm.expect(member).not.to.have.property('password');",
+                  "}",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "const members = pm.response.json();",
+                  "for (const role of ['alice', 'bob']) {",
+                  "  pm.environment.set(role + '_id', members.find(m => m.username === pm.environment.get(role + '_username')).id);",
+                  "}",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/accounts/members/list",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{staff_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Studio, classes, and credit packs",
+      "description": "Create a studio and a one-seat class. Both members receive five studio-specific credits; the class costs three. Capture the historical timestamp from the server ledger, avoiding client-clock assumptions.",
+      "item": [
+        {
+          "name": "11. Reject studio creation by member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 403\", function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/studio/create",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Forbidden {{run_id}}\",\n  \"timezone\": \"Asia/Kolkata\",\n  \"cancellation_cutoff_hours\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "12. Create studio",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "pm.environment.set('studio_id', pm.response.json().studio_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/studio/create",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{staff_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Postman Studio {{run_id}}\",\n  \"timezone\": \"Asia/Kolkata\",\n  \"cancellation_cutoff_hours\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "13. List studios",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"List studios\", function () {",
+                  "pm.expect(pm.response.json().some(s => s.id === Number(pm.environment.get('studio_id')))).to.equal(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/studio/list",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{staff_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "14. Create one-seat class",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "pm.environment.set('class_id', pm.response.json().session_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/studio/{{studio_id}}/session/create",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{staff_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"starts_at\": \"{{class_start}}\",\n  \"duration_minutes\": 60,\n  \"capacity\": 1,\n  \"credit_cost\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "15. Create second class for key-conflict check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "pm.environment.set('other_class_id', pm.response.json().session_id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/studio/{{studio_id}}/session/create",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{staff_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"starts_at\": \"{{class_start}}\",\n  \"duration_minutes\": 60,\n  \"capacity\": 1,\n  \"credit_cost\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "16. Browse class with one free seat",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Browse class with one free seat\", function () {",
+                  "const session = pm.response.json().find(s => s.id === Number(pm.environment.get('class_id')));",
+                  "pm.expect(session).to.exist;",
+                  "pm.expect(session.no_of_seats_available).to.equal(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/studio/classes?start_date={{class_date}}&end_date={{class_date}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "17. Grant five credits to alice",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "pm.environment.set('alice_pack_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/studio/{{studio_id}}/credit/grant",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{staff_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"member\": {{alice_id}},\n  \"credits_remaining\": 5,\n  \"expires_at\": \"{{expires_at}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "18. Grant five credits to bob",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "if (pm.response.code === 201) {",
+                  "pm.environment.set('bob_pack_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/studio/{{studio_id}}/credit/grant",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{staff_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"member\": {{bob_id}},\n  \"credits_remaining\": 5,\n  \"expires_at\": \"{{expires_at}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "19. Capture Alice grant and historical timestamp",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Capture Alice grant and historical timestamp\", function () {",
+                  "const events = pm.response.json().filter(e => e.pack_id === Number(pm.environment.get('alice_pack_id')));",
+                  "pm.expect(events.map(e => [e.kind,e.amount])).to.deep.equal([['grant',5]]);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "const grant = pm.response.json().find(e => e.pack_id === Number(pm.environment.get('alice_pack_id')) && e.kind === 'grant');",
+                  "pm.environment.set('historical_at', grant.effective_at);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/studio/credit/movements",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "20. Alice begins with five credits",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Alice begins with five credits\", function () {",
+                  "const studio = pm.response.json().studios.find(s => s.id === Number(pm.environment.get('studio_id')));",
+                  "pm.expect(studio).to.exist;",
+                  "pm.expect(studio.total_credits).to.equal(5);",
+                  "pm.expect(studio.credit_packs.reduce((sum, p) => sum + p.credits_remaining, 0)).to.equal(5);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/studio/credit/balance",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Booking retries and waitlist lifecycle",
+      "description": "Alice fills the class. A replay must not charge her twice. Bob cannot book the full class, then joins, withdraws, and rejoins while preserving his previous entry.",
+      "item": [
+        {
+          "name": "21. Book Alice into the only seat",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.test(\"Book Alice into the only seat\", function () {",
+                  "pm.expect(pm.response.json().status).to.equal('confirmed');",
+                  "pm.expect(pm.response.json().credits_charged).to.equal(3);",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "pm.environment.set('booking_id', pm.response.json().id);",
+                  "pm.environment.set('booking_response', JSON.stringify(pm.response.json()));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{booking_key}}"
+              }
+            ],
+            "url": "{{base_url}}/bookings/classes/{{class_id}}/book",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "22. Replay Alice booking without another charge",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.test(\"Replay Alice booking without another charge\", function () {",
+                  "pm.expect(pm.response.json()).to.deep.equal(JSON.parse(pm.environment.get('booking_response')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{booking_key}}"
+              }
+            ],
+            "url": "{{base_url}}/bookings/classes/{{class_id}}/book",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "23. Alice has two credits after the retry",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Alice has two credits after the retry\", function () {",
+                  "const studio = pm.response.json().studios.find(s => s.id === Number(pm.environment.get('studio_id')));",
+                  "pm.expect(studio).to.exist;",
+                  "pm.expect(studio.total_credits).to.equal(2);",
+                  "pm.expect(studio.credit_packs.reduce((sum, p) => sum + p.credits_remaining, 0)).to.equal(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/studio/credit/balance",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "24. Reject key reuse for a different class",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 409\", function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{booking_key}}"
+              }
+            ],
+            "url": "{{base_url}}/bookings/classes/{{other_class_id}}/book",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "25. Reject Bob booking a full class",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{bob_booking_key}}"
+              }
+            ],
+            "url": "{{base_url}}/bookings/classes/{{class_id}}/book",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{bob_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "26. Bob is not charged for the failed booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Bob is not charged for the failed booking\", function () {",
+                  "const studio = pm.response.json().studios.find(s => s.id === Number(pm.environment.get('studio_id')));",
+                  "pm.expect(studio).to.exist;",
+                  "pm.expect(studio.total_credits).to.equal(5);",
+                  "pm.expect(studio.credit_packs.reduce((sum, p) => sum + p.credits_remaining, 0)).to.equal(5);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/studio/credit/balance",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{bob_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "27. Join Bob to the full class waitlist",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.test(\"Join Bob to the full class waitlist\", function () {",
+                  "pm.expect(pm.response.json().status).to.equal('waiting');",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "pm.environment.set('withdrawn_entry_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/bookings/classes/{{class_id}}/waitlist/join",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{bob_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "28. Withdraw Bob waiting entry",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Withdraw Bob waiting entry\", function () {",
+                  "pm.expect(pm.response.json().status).to.equal('withdrawn');",
+                  "pm.expect(pm.response.json().id).to.equal(Number(pm.environment.get('withdrawn_entry_id')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/bookings/classes/{{class_id}}/waitlist/withdraw",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{bob_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "29. Rejoin Bob with a new waitlist entry",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.test(\"Rejoin Bob with a new waitlist entry\", function () {",
+                  "pm.expect(pm.response.json().status).to.equal('waiting');",
+                  "pm.expect(pm.response.json().id).not.to.equal(Number(pm.environment.get('withdrawn_entry_id')));",
+                  "});",
+                  "if (pm.response.code === 201) {",
+                  "pm.environment.set('waiting_entry_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/bookings/classes/{{class_id}}/waitlist/join",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{bob_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "30. Inspect Bob waiting and withdrawn history",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Inspect Bob waiting and withdrawn history\", function () {",
+                  "const entries = pm.response.json();",
+                  "pm.expect(entries.find(e => e.id === Number(pm.environment.get('waiting_entry_id'))).status).to.equal('waiting');",
+                  "pm.expect(entries.find(e => e.id === Number(pm.environment.get('withdrawn_entry_id'))).status).to.equal('withdrawn');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/bookings/waitlist/me",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{bob_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Cancellation, promotion, and refunds",
+      "description": "The class starts in two days, so cancellation is before the four-hour cutoff. Alice is refunded and Bob is promoted and charged in the same transaction.",
+      "item": [
+        {
+          "name": "31. Cancel Alice booking before cutoff",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/bookings/{{booking_id}}/cancel",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "32. Reject repeat cancellation without another refund",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/bookings/{{booking_id}}/cancel",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "33. Confirm Alice booking is cancelled",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Confirm Alice booking is cancelled\", function () {",
+                  "const booking = pm.response.json().find(b => b.id === Number(pm.environment.get('booking_id')));",
+                  "pm.expect(booking.status).to.equal('cancelled');",
+                  "pm.expect(booking.cancelled_at).not.to.equal(null);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/bookings/me",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "34. Confirm Bob promoted booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Confirm Bob promoted booking\", function () {",
+                  "const booking = pm.response.json().find(b => b.class_session.id === Number(pm.environment.get('class_id')));",
+                  "pm.expect(booking.status).to.equal('confirmed');",
+                  "pm.expect(booking.credits_charged).to.equal(3);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "const booking = pm.response.json().find(b => b.class_session.id === Number(pm.environment.get('class_id')));",
+                  "pm.environment.set('promoted_booking_id', booking.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/bookings/me",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{bob_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "35. Confirm waitlist links to promoted booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Confirm waitlist links to promoted booking\", function () {",
+                  "const entries = pm.response.json();",
+                  "const entry = entries.find(e => e.id === Number(pm.environment.get('waiting_entry_id')));",
+                  "pm.expect(entry.status).to.equal('promoted');",
+                  "pm.expect(entry.booking_id).to.equal(Number(pm.environment.get('promoted_booking_id')));",
+                  "pm.expect(entry.promoted_at).not.to.equal(null);",
+                  "pm.expect(entries.find(e => e.id === Number(pm.environment.get('withdrawn_entry_id'))).status).to.equal('withdrawn');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/bookings/waitlist/me",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{bob_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "36. Alice is refunded once back to five",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Alice is refunded once back to five\", function () {",
+                  "const studio = pm.response.json().studios.find(s => s.id === Number(pm.environment.get('studio_id')));",
+                  "pm.expect(studio).to.exist;",
+                  "pm.expect(studio.total_credits).to.equal(5);",
+                  "pm.expect(studio.credit_packs.reduce((sum, p) => sum + p.credits_remaining, 0)).to.equal(5);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/studio/credit/balance",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "37. Bob pays three credits for promotion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Bob pays three credits for promotion\", function () {",
+                  "const studio = pm.response.json().studios.find(s => s.id === Number(pm.environment.get('studio_id')));",
+                  "pm.expect(studio).to.exist;",
+                  "pm.expect(studio.total_credits).to.equal(2);",
+                  "pm.expect(studio.credit_packs.reduce((sum, p) => sum + p.credits_remaining, 0)).to.equal(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/studio/credit/balance",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{bob_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "38. Promoted booking keeps the class full",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Promoted booking keeps the class full\", function () {",
+                  "const session = pm.response.json().find(s => s.id === Number(pm.environment.get('class_id')));",
+                  "pm.expect(session).to.exist;",
+                  "pm.expect(session.no_of_seats_available).to.equal(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/studio/classes?start_date={{class_date}}&end_date={{class_date}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Accounting history and ownership",
+      "description": "Check grant/charge/refund causes, reconstruct the balance at the server grant timestamp, and confirm private booking ownership. Idempotent replay returns the original response even after cancellation.",
+      "item": [
+        {
+          "name": "39. Inspect alice credit movements",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Inspect alice credit movements\", function () {",
+                  "const events = pm.response.json().filter(e => e.pack_id === Number(pm.environment.get('alice_pack_id')));",
+                  "pm.expect(events.map(e => [e.kind,e.amount])).to.deep.equal([['grant',5],['booking',-3],['refund',3]]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/studio/credit/movements",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "40. Inspect bob credit movements",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Inspect bob credit movements\", function () {",
+                  "const events = pm.response.json().filter(e => e.pack_id === Number(pm.environment.get('bob_pack_id')));",
+                  "pm.expect(events.map(e => [e.kind,e.amount])).to.deep.equal([['grant',5],['booking',-3]]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/studio/credit/movements",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{bob_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "41. Reconstruct Alice balance at grant time",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Reconstruct Alice balance at grant time\", function () {",
+                  "const studio = pm.response.json().studios.find(s => s.id === Number(pm.environment.get('studio_id')));",
+                  "pm.expect(studio).to.exist;",
+                  "pm.expect(studio.total_credits).to.equal(5);",
+                  "pm.expect(studio.credit_packs.reduce((sum, p) => sum + p.credits_remaining, 0)).to.equal(5);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/studio/credit/balance?at={{historical_at}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "42. Reject a future balance snapshot",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/studio/credit/balance?at={{future_at}}",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "43. Reject Bob cancelling Alice booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 404\", function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/bookings/{{booking_id}}/cancel",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{bob_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "44. Replay original response after cancellation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.test(\"Replay original response after cancellation\", function () {",
+                  "pm.expect(pm.response.json()).to.deep.equal(JSON.parse(pm.environment.get('booking_response')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{booking_key}}"
+              }
+            ],
+            "url": "{{base_url}}/bookings/classes/{{class_id}}/book",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "45. Replay does not restore cancelled booking",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Replay does not restore cancelled booking\", function () {",
+                  "const bookings = pm.response.json().filter(b => b.class_session.id === Number(pm.environment.get('class_id')));",
+                  "pm.expect(bookings).to.have.lengthOf(1);",
+                  "pm.expect(bookings[0].status).to.equal('cancelled');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/bookings/me",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "46. Replay leaves the refunded balance unchanged",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Replay leaves the refunded balance unchanged\", function () {",
+                  "const studio = pm.response.json().studios.find(s => s.id === Number(pm.environment.get('studio_id')));",
+                  "pm.expect(studio).to.exist;",
+                  "pm.expect(studio.total_credits).to.equal(5);",
+                  "pm.expect(studio.credit_packs.reduce((sum, p) => sum + p.credits_remaining, 0)).to.equal(5);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/studio/credit/balance",
+            "description": "",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{alice_access}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
