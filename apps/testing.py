@@ -43,6 +43,7 @@ class DomainFixtures(TestCase):
     def make_pack(
         self, credits: int = 10, **overrides: Unpack[PackOverrides]
     ) -> CreditPack:
+        """Create a pack and its grant; zero-credit packs have no grant movement."""
         values: PackOverrides = {
             "member": self.member,
             "studio": self.studio,

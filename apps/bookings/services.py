@@ -30,6 +30,7 @@ from .types import BookingResponse
 
 
 def check_class_availability(session: ClassSessions) -> None:
+    """Raise if the class has started or confirmed bookings fill its capacity."""
     now = timezone.now()
     if session.starts_at <= now:
         raise ClassAlreadyStarted()
@@ -41,6 +42,10 @@ def check_class_availability(session: ClassSessions) -> None:
 
 
 def _create_booking(member_id: int, class_session: ClassSessions) -> Booking:
+    """Create a booking and charge packs in expiry order.
+
+    Caller must hold the class row lock inside an atomic transaction.
+    """
     candidates = list(
         CreditPack.objects.select_for_update()
         .filter(
@@ -51,6 +56,7 @@ def _create_booking(member_id: int, class_session: ClassSessions) -> Booking:
         )
         .order_by("expires_at", "pk")
     )
+    # Lock waits can take us past class start, a pack's grant time, or expiry.
     check_class_availability(class_session)
     booking_time = timezone.now()
     studio_member_credits = [
@@ -111,6 +117,7 @@ def _create_booking(member_id: int, class_session: ClassSessions) -> Booking:
 def book_class(
     member: User, class_session_id: int, idempotency_key: str | None
 ) -> tuple[BookingResponse, int]:
+    """Book atomically, or replay the saved response for this member and key."""
     if not idempotency_key or not idempotency_key.strip() or len(idempotency_key) > 255:
         raise serializers.ValidationError(
             {"Idempotency-Key": ("Provide a nonblank key of at most 255 characters.")}
@@ -121,8 +128,8 @@ def book_class(
         separators=(",", ":"),
     )
     fingerprint = hashlib.sha256(payload.encode()).hexdigest()
-    # A stable row exists even before a request's idempotency record does.
-    # All booking writes use member -> class -> packs as their lock order.
+    # Serialize this member's direct requests before an idempotency row exists.
+    # This path locks member -> class -> packs; promotion takes a different path.
     get_user_model().objects.select_for_update(no_key=True).get(pk=member.pk)
     previous = IdempotencyRecord.objects.filter(
         member=member,
@@ -139,7 +146,6 @@ def book_class(
             of=("self",)).select_related("studio"),
         pk=class_session_id,
     )
-    # check_class_availability(session)
     booking = _create_booking(member.id, session)
     body: BookingResponse = {
         "id": booking.pk,
@@ -160,6 +166,7 @@ def book_class(
 
 @transaction.atomic
 def cancel_booking(member: User, booking_id: int) -> bool:
+    """Cancel an owned booking once, refund if eligible, and promote waiters."""
     get_user_model().objects.select_for_update(no_key=True).get(pk=member.pk)
     booking = get_object_or_404(
         Booking.objects.select_for_update(of=("self",))
@@ -207,6 +214,7 @@ def cancel_booking(member: User, booking_id: int) -> bool:
 
 
 def is_waitlist_eligible(member: User, class_session: ClassSessions) -> bool:
+    """Return True when eligible; raise a validation error for any rejection."""
     now = timezone.now()
     if class_session.starts_at <= now:
         raise ClassAlreadyStarted()
@@ -235,6 +243,7 @@ def is_waitlist_eligible(member: User, class_session: ClassSessions) -> bool:
 
 @transaction.atomic
 def join_waitlist(member: User, class_session_id: int) -> WaitlistEntry:
+    """Join a full future class's waitlist without reserving or charging credits."""
     get_user_model().objects.select_for_update(no_key=True).get(pk=member.pk)
     class_session = get_object_or_404(
         ClassSessions.objects.select_for_update(),
@@ -250,6 +259,7 @@ def join_waitlist(member: User, class_session_id: int) -> WaitlistEntry:
 
 @transaction.atomic
 def promote_waitlist_entry(class_session_id: int) -> None:
+    """Fill open seats in queue order, leaving unaffordable members waiting."""
     class_session = get_object_or_404(
         ClassSessions.objects.select_for_update(), pk=class_session_id)
     waiting_list = (
