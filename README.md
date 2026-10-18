@@ -89,3 +89,15 @@ tests separately:
 ```bash
 uv run --frozen python manage.py test --settings=config.test_settings --noinput
 ```
+
+## Continuous integration
+
+GitHub Actions runs `.github/workflows/ci.yml` on pushes and pull requests.
+One Ubuntu job installs Python 3.13 and uv, verifies and installs `uv.lock`, then
+runs Ruff, strict mypy, the migration-drift check, and the full PostgreSQL test
+suite, including concurrency tests. A failed check fails the job.
+
+The workflow starts its own PostgreSQL 17 service using disposable CI credentials.
+It supplies Django configuration through environment variables and needs no
+repository secrets or local `.env` file. Results appear in the repository's
+**Actions** tab and as checks on pull requests.
