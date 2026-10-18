@@ -31,6 +31,8 @@ These decisions describe the current assessment implementation.
 - Cancellation at or before the deadline refunds credits; later cancellation
   forfeits them. Repeat cancellation cannot refund again.
 - Cancelled bookings and withdrawn waitlist entries remain as history.
+- A successful direct booking withdraws any active waitlist entry for that class
+  in the same transaction, preventing rebooking after a later cancellation.
 - Cancellation promotes the earliest waiting member who can afford the class.
   Unaffordable members keep their place. Promotion runs within the cancellation
   transaction, without a background worker.
@@ -61,7 +63,6 @@ These decisions describe the current assessment implementation.
 ## Known issues still deferred
 
 1. Promotions across different classes sharing credit packs can deadlock.
-2. Direct booking can leave an old waiting entry for the same class.
-3. Extremely large cutoffs can overflow datetime arithmetic and return an error.
+2. Extremely large cutoffs can overflow datetime arithmetic and return an error.
 
 These issues remain unresolved; passing tests do not establish full correctness.

@@ -40,6 +40,11 @@ ALLOWED_HOSTS: list[str] = env.list(
 # Application definition
 
 INSTALLED_APPS = [
+    # Local commands take precedence over Django's runserver command.
+    "apps.accounts",
+    "apps.studios",
+    "apps.bookings",
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -49,10 +54,6 @@ INSTALLED_APPS = [
 
     "rest_framework",
     "rest_framework_simplejwt.token_blacklist",
-
-    "apps.accounts",
-    "apps.studios",
-    "apps.bookings",
 ]
 
 MIDDLEWARE = [

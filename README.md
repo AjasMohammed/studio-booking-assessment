@@ -66,6 +66,41 @@ service first if it is already using port 8000: `docker compose stop app`.
 
 ## Architecture and business rules
 
+### Debug demo data
+
+With `DEBUG=True`, starting `runserver` automatically loads the Python fixtures
+in [apps/bookings/fixtures.py](apps/bookings/fixtures.py) before serving requests.
+This works with both the Docker startup command and host development. Apply
+migrations first when running on the host. With `DEBUG=False`, the fixtures do
+not read or write the database. Other commands, including tests and migrations,
+do not automatically load demo data.
+
+The accounts are `demo-staff` (application staff) and `demo-alice`, `demo-bob`,
+and `demo-charlie` (members). All initially use password `DemoOnly!Cedar-473`.
+Log in through `POST /accounts/auth/login` using `username` and `password`.
+These accounts have no Django admin access.
+
+The fixtures create **Demo Studio** in `Asia/Kolkata`, with a four-hour cutoff:
+
+- An open three-seat class, starting two days after seeding, for testing booking.
+- A full one-seat class, starting three days after seeding, booked by Alice.
+  Charlie is first in line with only expired credits; Bob is second with usable
+  credits. Cancelling Alice's booking refunds her and promotes Bob past Charlie.
+- A class starting two hours after seeding, booked by Bob, for testing late
+  cancellation without a refund.
+- Alice has two packs with different expiries. Her initial booking spends two
+  credits from the first and one from the second. Alice and Bob each initially
+  have seven usable credits remaining; Charlie has zero. Grant, charge, and
+  calculated expiry history can be inspected through the credit endpoints.
+
+Seeding runs in one transaction and uses the existing booking and credit services.
+Restarts preserve demo changes, passwords, balances, and timestamps. The existing
+**Demo Studio** marks the fixtures as already loaded; they are not reset or
+refreshed as classes age. Existing accounts with conflicting demo usernames cause
+startup to stop with an explanation rather than changing those accounts.
+
+### Domain structure
+
 - [Accounts](apps/accounts/) contains the custom `User` model and JWT endpoints.
   Application roles (`staff` and `member`) are separate from Django admin flags.
   Protected endpoints require authentication; staff permissions guard studio
@@ -108,6 +143,10 @@ a seat before class start, promotion charges an affordable waiting member and
 links the new booking to the entry. Unaffordable members remain waiting in their
 original position. No background worker is required; promotion runs within the
 cancellation transaction.
+
+A successful direct booking automatically withdraws the member's active waitlist
+entry for that class. The entry remains in history and cannot rebook the member
+when they later cancel.
 
 ## Authentication and access
 
@@ -312,9 +351,8 @@ a repeated cancellation returns HTTP 400 without refunding again.
 - Public staff signup and global staff access are intentional assessment
   decisions, described in [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md).
 - Concurrent promotions across different classes sharing members' credit packs
-  can deadlock. Broader locking changes and promotion-race coverage were deferred.
-- A member booking directly can retain an existing waiting entry for that class.
-  Resolving this stale entry automatically was deferred.
+  can deadlock. Broader locking changes and cross-class promotion-race coverage
+  were deferred; same-class concurrent cancellations are tested.
 - Extremely large cancellation cutoffs can overflow deadline arithmetic and return
   a server error. Validation for that case was deferred.
 - The Docker app uses Django's development server. Production serving and
